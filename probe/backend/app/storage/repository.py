@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.storage.db_models import (
@@ -62,6 +62,30 @@ class TestRepository:
             return list(result.scalars().all())
         except Exception as exc:
             raise DatabaseError(f"Failed to list tests: {exc}") from exc
+
+    async def list_all_with_counts(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[tuple[TestModel, int, int, int]]:
+        try:
+            stmt = (
+                select(
+                    TestModel,
+                    func.count(func.distinct(ActionModel.id)).label("actions_count"),
+                    func.count(func.distinct(ObservationModel.id)).label("states_count"),
+                    func.count(func.distinct(FindingModel.id)).label("findings_count"),
+                )
+                .outerjoin(ActionModel, ActionModel.test_id == TestModel.id)
+                .outerjoin(ObservationModel, ObservationModel.test_id == TestModel.id)
+                .outerjoin(FindingModel, FindingModel.test_id == TestModel.id)
+                .group_by(TestModel.id)
+                .order_by(TestModel.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            result = await self._db.execute(stmt)
+            return [(row[0], int(row[1]), int(row[2]), int(row[3])) for row in result.all()]
+        except Exception as exc:
+            raise DatabaseError(f"Failed to list tests with counts: {exc}") from exc
 
     async def update_status(
         self,

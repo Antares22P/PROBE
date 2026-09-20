@@ -138,6 +138,10 @@ class TestResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    actions_count: int = 0
+    states_count: int = 0
+    findings_count: int = 0
+    duration_ms: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -145,7 +149,6 @@ class TestResponse(BaseModel):
 class TestDetailResponse(TestResponse):
     current_url: Optional[str] = None
     page_title: Optional[str] = None
-    duration_ms: Optional[float] = None
     status_code: Optional[int] = None
     screenshot_url: Optional[str] = None
     ai_summary: Optional[dict[str, Any]] = None
@@ -154,8 +157,15 @@ class TestDetailResponse(TestResponse):
     findings: list[FindingResponse] = []
 
 
-
-def _to_response(t: TestModel) -> TestResponse:
+def _to_response(
+    t: TestModel,
+    actions_count: int = 0,
+    states_count: int = 0,
+    findings_count: int = 0,
+) -> TestResponse:
+    duration_ms: Optional[float] = None
+    if t.completed_at and t.started_at:
+        duration_ms = round((t.completed_at - t.started_at).total_seconds() * 1000, 2)
     return TestResponse(
         id=t.id,
         url=t.url,
@@ -166,6 +176,10 @@ def _to_response(t: TestModel) -> TestResponse:
         started_at=t.started_at,
         completed_at=t.completed_at,
         error_message=t.error_message,
+        actions_count=actions_count,
+        states_count=states_count,
+        findings_count=findings_count,
+        duration_ms=duration_ms,
     )
 
 
@@ -209,10 +223,13 @@ async def create_test(
 async def list_tests(
     db: AsyncSession = Depends(get_db),
 ) -> list[TestResponse]:
-    """List all test sessions, most recent first."""
+    """List all test sessions with metric counts, most recent first."""
     repo = TestRepository(db)
-    tests = await repo.list_all()
-    return [_to_response(t) for t in tests]
+    tests_with_counts = await repo.list_all_with_counts()
+    return [
+        _to_response(t, actions_count=ac, states_count=sc, findings_count=fc)
+        for t, ac, sc, fc in tests_with_counts
+    ]
 
 
 @router.get("/tests/{test_id}")

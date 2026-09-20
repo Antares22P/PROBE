@@ -12,6 +12,8 @@ import type {
   ActionItem,
   Finding,
   ReproductionResult,
+  FindingAnalysisResult,
+  TestSummaryAnalysis,
 } from '../types'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -38,19 +40,31 @@ const FINDING_STATUS_COLORS: Record<string, string> = {
   dismissed: '#64748b',
 }
 
-function FindingStatusBadge({ status }: { status?: string }) {
-  const s = status || 'potential'
-  const color = FINDING_STATUS_COLORS[s] ?? '#94a3b8'
+const REPRO_STATUS_COLORS: Record<string, string> = {
+  not_attempted: '#6b7280',
+  reproducing: '#6366f1',
+  reproduced: '#ef4444',
+  not_reproduced: '#22c55e',
+  intermittent: '#f59e0b',
+  failed: '#dc2626',
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const color = STATUS_COLORS[status] ?? '#6b7280'
   return (
     <span
-      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
+      className="px-2.5 py-1 rounded text-xs font-mono font-bold uppercase tracking-wider inline-flex items-center gap-1.5"
       style={{
         color,
         backgroundColor: `${color}18`,
         border: `1px solid ${color}35`,
       }}
     >
-      {s}
+      <span
+        className={`w-2 h-2 rounded-full ${status === 'running' ? 'animate-pulse' : ''}`}
+        style={{ background: color }}
+      />
+      {status}
     </span>
   )
 }
@@ -60,7 +74,7 @@ function FindingSeverityBadge({ severity }: { severity?: string }) {
   const color = SEVERITY_COLORS[sev] ?? '#6b7280'
   return (
     <span
-      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
+      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider inline-block"
       style={{
         color,
         backgroundColor: `${color}18`,
@@ -72,17 +86,36 @@ function FindingSeverityBadge({ severity }: { severity?: string }) {
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
+function FindingStatusBadge({ status }: { status?: string }) {
+  const s = status || 'potential'
+  const color = FINDING_STATUS_COLORS[s] ?? '#94a3b8'
   return (
     <span
-      className="px-2.5 py-0.5 rounded text-xs font-mono font-semibold uppercase tracking-wider"
+      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider inline-block"
       style={{
-        color: STATUS_COLORS[status] ?? '#6b7280',
-        backgroundColor: `${STATUS_COLORS[status] ?? '#6b7280'}18`,
-        border: `1px solid ${STATUS_COLORS[status] ?? '#6b7280'}33`,
+        color,
+        backgroundColor: `${color}18`,
+        border: `1px solid ${color}35`,
       }}
     >
-      {status}
+      {s}
+    </span>
+  )
+}
+
+function ReproductionStatusBadge({ status }: { status?: string }) {
+  const s = status || 'not_attempted'
+  const color = REPRO_STATUS_COLORS[s] ?? '#6b7280'
+  return (
+    <span
+      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider inline-block"
+      style={{
+        color,
+        backgroundColor: `${color}18`,
+        border: `1px solid ${color}35`,
+      }}
+    >
+      {s.replace('_', ' ')}
     </span>
   )
 }
@@ -98,7 +131,7 @@ function StatusCodeBadge({ code }: { code?: number | null }) {
 
   return (
     <span
-      className="px-2 py-0.5 rounded text-xs font-mono font-semibold"
+      className="px-2 py-0.5 rounded text-[11px] font-mono font-bold"
       style={{ color, backgroundColor: `${color}15`, border: `1px solid ${color}30` }}
     >
       HTTP {code}
@@ -106,137 +139,26 @@ function StatusCodeBadge({ code }: { code?: number | null }) {
   )
 }
 
-function EventRow({ event }: { event: SSEEvent }) {
-  const timeStr = new Date().toLocaleTimeString([], { hour12: false })
-
-  if (event.type === 'connected') {
-    return (
-      <div className="text-xs font-mono text-slate-500 py-0.5">
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        — Connected to PROBE autonomous stream
-      </div>
-    )
-  }
-
-  if (event.type === 'status') {
-    const color = STATUS_COLORS[event.status ?? ''] ?? '#6b7280'
-    return (
-      <div className="text-xs font-mono py-0.5" style={{ color }}>
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        <span className="font-semibold">[{event.status?.toUpperCase()}]</span> {event.message}
-        {event.actions_count !== undefined && (
-          <span className="text-slate-400 ml-2">
-            ({event.actions_count} action{event.actions_count !== 1 ? 's' : ''}, {event.states_count ?? 0} states)
-          </span>
-        )}
-      </div>
-    )
-  }
-
-  if (event.type === 'action_start') {
-    return (
-      <div className="text-xs font-mono text-amber-300/90 py-0.5">
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        <span className="text-amber-400 font-semibold">[ACTION:START]</span>{' '}
-        <span>{event.description || `Executing ${event.action_type}`}</span>
-      </div>
-    )
-  }
-
-  if (event.type === 'action_completed') {
-    return (
-      <div className="text-xs font-mono text-emerald-300 py-0.5">
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        <span className="text-emerald-400 font-semibold">[ACTION:DONE]</span>{' '}
-        <span>{event.description}</span>
-        {event.duration_ms !== undefined && event.duration_ms !== null && (
-          <span className="text-slate-400 ml-2">({event.duration_ms}ms)</span>
-        )}
-        {event.new_url && (
-          <span className="text-slate-400 ml-2">→ {event.new_url}</span>
-        )}
-      </div>
-    )
-  }
-
-  if (event.type === 'action_failed') {
-    return (
-      <div className="text-xs font-mono text-red-400 py-0.5">
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        <span className="text-red-500 font-semibold">[ACTION:FAIL]</span>{' '}
-        <span>{event.description}</span>
-      </div>
-    )
-  }
-
-  if (event.type === 'observation') {
-    return (
-      <div className="text-xs font-mono text-slate-300 py-0.5">
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        <span className="text-indigo-400 font-semibold">[OBSERVE]</span>{' '}
-        <span className="text-slate-100">{event.url || event.requested_url}</span>
-        {event.title && <span className="text-slate-400"> — "{event.title}"</span>}
-        {event.status_code && (
-          <span className="text-emerald-400 ml-2">({event.status_code})</span>
-        )}
-        {event.element_count !== undefined && (
-          <span className="text-slate-400 ml-2">
-            · Discovered {event.element_count} interactive elements
-          </span>
-        )}
-      </div>
-    )
-  }
-
-  if (event.type === 'screenshot') {
-    return (
-      <div className="text-xs font-mono text-emerald-400/80 py-0.5">
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        <span>[SCREENSHOT]</span> Captured state snapshot
-      </div>
-    )
-  }
-
-  if (event.type === 'finding') {
-    const color = SEVERITY_COLORS[event.severity ?? 'info'] ?? '#6b7280'
-    return (
-      <div className="text-xs font-mono py-0.5">
-        <span className="text-slate-600 mr-2">[{timeStr}]</span>
-        <span style={{ color }}>[{event.severity?.toUpperCase()}]</span>{' '}
-        <span className="text-slate-300 font-medium">{event.category}: </span>
-        <span className="text-slate-200">{event.description}</span>
-      </div>
-    )
-  }
-
-  return null
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}m ${secs.toString().padStart(2, '0')}s`
 }
 
-const REPRO_STATUS_COLORS: Record<string, string> = {
-  not_attempted: '#6b7280',
-  reproducing: '#6366f1',
-  reproduced: '#ef4444',
-  not_reproduced: '#22c55e',
-  intermittent: '#f59e0b',
-  failed: '#dc2626',
+function formatTime(isoStr?: string | null): string {
+  if (!isoStr) return ''
+  try {
+    const d = new Date(isoStr)
+    return d.toLocaleTimeString([], { hour12: false })
+  } catch {
+    return ''
+  }
 }
 
-function ReproductionStatusBadge({ status }: { status?: string }) {
-  const s = status || 'not_attempted'
-  const color = REPRO_STATUS_COLORS[s] ?? '#6b7280'
-  return (
-    <span
-      className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
-      style={{
-        color,
-        backgroundColor: `${color}18`,
-        border: `1px solid ${color}40`,
-      }}
-    >
-      {s.replace('_', ' ')}
-    </span>
-  )
-}
+// ---------------------------------------------------------------------------
+// Finding Detail Modal
+// ---------------------------------------------------------------------------
 
 function FindingDetailModal({
   finding,
@@ -249,1335 +171,1415 @@ function FindingDetailModal({
   onClose: () => void
   onFindingUpdated: (updatedFinding: Finding) => void
 }) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'evidence' | 'reproduction' | 'ai'>('overview')
   const [reproducing, setReproducing] = useState(false)
-  const [reproAttempts, setReproAttempts] = useState<number>(1)
-  const [latestReproduction, setLatestReproduction] = useState<ReproductionResult | null>(null)
+  const [reproAttempts, setReproAttempts] = useState(1)
+  const [reproResult, setReproResult] = useState<ReproductionResult | null>(null)
   const [reproHistory, setReproHistory] = useState<ReproductionResult[]>([])
-  const [reproError, setReproError] = useState<string | null>(null)
+  const [analyzingAI, setAnalyzingAI] = useState(false)
+  const [aiAnalysis, setAiAnalysis] = useState<FindingAnalysisResult | null>(
+    (finding.ai_analysis as FindingAnalysisResult) || null
+  )
+  const [error, setError] = useState<string | null>(null)
 
-  const [analyzing, setAnalyzing] = useState(false)
-  const [aiAnalysis, setAiAnalysis] = useState<any>(finding.ai_analysis || null)
-  const [aiAnalysisError, setAiAnalysisError] = useState<string | null>(null)
-
-  const handleRunAnalysis = async () => {
-    setAnalyzing(true)
-    setAiAnalysisError(null)
-    try {
-      const res = await api.analyzeFinding(testId, finding.id)
-      setAiAnalysis(res)
-      const updated = {
-        ...finding,
-        ai_analysis: res,
-        recommendation: res.recommendation || finding.recommendation,
-      }
-      onFindingUpdated(updated)
-    } catch (err: any) {
-      setAiAnalysisError(err.message || 'AI analysis failed')
-    } finally {
-      setAnalyzing(false)
-    }
-  }
-
-  // Load prior reproductions on mount
   useEffect(() => {
-    if (finding.ai_analysis) {
-      setAiAnalysis(finding.ai_analysis)
-    }
     api.getReproductions(testId, finding.id)
-      .then((reps) => {
-        setReproHistory(reps)
-        if (reps.length > 0) setLatestReproduction(reps[0])
+      .then((history) => {
+        setReproHistory(history)
+        if (history.length > 0) {
+          setReproResult(history[0])
+        }
       })
       .catch(() => {})
-  }, [testId, finding.id, finding.ai_analysis])
+  }, [testId, finding.id])
 
-  // Extract structured action sequence
-  const actionSequence: string[] = (() => {
-    if (finding.reproduction && Array.isArray(finding.reproduction.action_sequence)) {
-      return finding.reproduction.action_sequence
-    }
-    if (finding.reproduction && Array.isArray(finding.reproduction.steps)) {
-      return finding.reproduction.steps
-    }
-    return []
-  })()
-
-  const handleRunReproduction = async () => {
+  const handleReproduce = async () => {
     setReproducing(true)
-    setReproError(null)
+    setError(null)
     try {
       const res = await api.reproduceFinding(testId, finding.id, reproAttempts)
-      setLatestReproduction(res)
+      setReproResult(res)
       setReproHistory((prev) => [res, ...prev])
 
-      // Determine updated status
-      let newStatus = finding.status
-      if (res.status === 'reproduced') {
-        newStatus = 'confirmed'
-      } else if (res.status === 'not_reproduced') {
-        newStatus = 'unconfirmed'
-      } else if (res.status === 'intermittent') {
-        newStatus = 'investigating'
-      }
-
-      const updated = {
-        ...finding,
-        status: newStatus,
-        reproductions: [res, ...(finding.reproductions || [])],
-      }
-      onFindingUpdated(updated)
-    } catch (err: any) {
-      setReproError(err.message || 'Reproduction failed to execute')
+      const freshFinding = await api.getFinding(testId, finding.id)
+      onFindingUpdated(freshFinding)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reproduction request failed')
     } finally {
       setReproducing(false)
     }
   }
 
+  const handleAnalyzeAI = async () => {
+    setAnalyzingAI(true)
+    setError(null)
+    try {
+      const res = await api.analyzeFinding(testId, finding.id)
+      setAiAnalysis(res)
+      const freshFinding = await api.getFinding(testId, finding.id)
+      onFindingUpdated(freshFinding)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI analysis request failed')
+    } finally {
+      setAnalyzingAI(false)
+    }
+  }
+
+  const evidenceList = finding.evidence || []
+  const screenshotEv = evidenceList.find((e) => e.screenshot_path || e.type === 'screenshot')
+  const networkEvList = evidenceList.filter((e) => e.type === 'network' || e.url || e.status_code)
+  const consoleEvList = evidenceList.filter((e) => e.type === 'console' || e.level || e.text || e.message)
+  const actionSequence = (finding.reproduction?.action_sequence as string[]) || []
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       <div
-        className="w-full max-w-3xl rounded-xl border p-6 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto font-mono"
-        style={{ background: '#111118', borderColor: '#2d2d3f' }}
+        className="w-full max-w-4xl max-h-[90vh] rounded-xl border flex flex-col shadow-2xl overflow-hidden"
+        style={{ background: '#0e0e17', borderColor: '#26263b' }}
       >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <FindingSeverityBadge severity={finding.severity} />
-              <FindingStatusBadge status={finding.status} />
-              <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 uppercase tracking-wider font-semibold">
+        {/* Modal Header */}
+        <div
+          className="px-6 py-4 border-b flex items-start justify-between gap-4"
+          style={{ background: '#090910', borderColor: '#1e1e2e' }}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <FindingSeverityBadge severity={String(finding.severity)} />
+              <FindingStatusBadge status={String(finding.status)} />
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700 uppercase">
                 {finding.category}
               </span>
               {finding.confidence !== undefined && (
-                <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-800/40">
-                  {(finding.confidence * 100).toFixed(0)}% Confidence
+                <span className="text-[11px] font-mono text-slate-400">
+                  Confidence: {Math.round(finding.confidence * 100)}%
                 </span>
               )}
             </div>
-            <h2 className="text-base font-bold text-slate-100 font-sans">{finding.title}</h2>
+            <h2 className="text-base font-mono font-bold text-slate-100 break-words">
+              {finding.title}
+            </h2>
+            <div className="text-xs font-mono text-slate-500 mt-1">
+              Finding ID: {finding.id} · Detected: {new Date(finding.timestamp).toLocaleString()}
+            </div>
           </div>
+
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors shrink-0 text-sm"
+            className="text-slate-400 hover:text-slate-100 text-lg font-mono px-2 py-1 rounded transition-colors cursor-pointer"
           >
             ✕
           </button>
         </div>
 
-        {/* AI Reasoning Layer (Gemini) */}
-        <div className="p-4 rounded-lg bg-gradient-to-b from-purple-950/30 to-slate-950 border border-purple-800/40 space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h3 className="text-xs uppercase text-purple-300 font-bold flex items-center gap-1.5">
-                <span>✨ AI Reasoning & Root Cause Analysis</span>
-                {aiAnalysis?.model_name && (
-                  <span className="px-2 py-0.5 rounded text-[10px] bg-purple-900/60 text-purple-200 border border-purple-700/50 normal-case font-mono">
-                    {aiAnalysis.model_name}
-                  </span>
-                )}
-              </h3>
-              <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-                Gemini analyzes empirical telemetry, separates observed facts from root-cause hypotheses, and provides remediation.
-              </p>
-            </div>
+        {/* Modal Tabs */}
+        <div
+          className="flex border-b px-6 gap-6 text-xs font-mono"
+          style={{ background: '#0b0b14', borderColor: '#1e1e2e' }}
+        >
+          {[
+            { id: 'overview', label: 'Overview & Telemetry' },
+            { id: 'evidence', label: `Evidence (${evidenceList.length})` },
+            { id: 'reproduction', label: `Reproduction (${actionSequence.length} Steps)` },
+            { id: 'ai', label: 'AI Root Cause Reasoning' },
+          ].map((tab) => (
             <button
-              onClick={handleRunAnalysis}
-              disabled={analyzing}
-              className="px-3.5 py-1.5 rounded text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0 shadow-lg shadow-purple-950/50"
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className="py-3 font-semibold transition-colors border-b-2 cursor-pointer"
+              style={{
+                borderColor: activeTab === tab.id ? '#6366f1' : 'transparent',
+                color: activeTab === tab.id ? '#a5b4fc' : '#94a3b8',
+              }}
             >
-              {analyzing ? (
-                <>
-                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                  <span>Reasoning with Gemini...</span>
-                </>
-              ) : (
-                <span>✨ {aiAnalysis ? 'Re-Analyze with AI' : 'Analyze with AI'}</span>
-              )}
+              {tab.label}
             </button>
-          </div>
-
-          {aiAnalysisError && (
-            <div className="p-2.5 rounded bg-red-950/50 border border-red-900 text-red-300 text-xs font-sans">
-              {aiAnalysisError}
-            </div>
-          )}
-
-          {aiAnalysis && (
-            <div className="space-y-3 pt-2 border-t border-purple-900/40 text-xs">
-              {/* Status Header */}
-              <div className="flex items-center justify-between flex-wrap gap-2 text-[11px]">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">Meaningful Finding:</span>
-                  <span className={`px-2 py-0.5 rounded font-bold uppercase ${aiAnalysis.is_meaningful ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/50' : 'bg-slate-800 text-slate-400'}`}>
-                    {aiAnalysis.is_meaningful ? 'YES (Genuine Defect)' : 'NO (Benign Noise)'}
-                  </span>
-                </div>
-                {aiAnalysis.severity_suggestion && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">AI Suggested Severity:</span>
-                    <FindingSeverityBadge severity={aiAnalysis.severity_suggestion} />
-                  </div>
-                )}
-                {aiAnalysis.confidence !== undefined && (
-                  <span className="text-purple-300 font-semibold">
-                    {(aiAnalysis.confidence * 100).toFixed(0)}% AI Confidence
-                  </span>
-                )}
-              </div>
-
-              {/* Error Warning if any */}
-              {aiAnalysis.error && (
-                <div className="p-2.5 rounded bg-amber-950/40 border border-amber-800/50 text-amber-300 text-[11px] font-sans">
-                  <span className="font-bold">[{aiAnalysis.error.error_type}]:</span> {aiAnalysis.error.message}
-                </div>
-              )}
-
-              {/* Explanation & Root Cause */}
-              {aiAnalysis.explanation && (
-                <div className="p-3 rounded bg-slate-900/80 border border-slate-800 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-purple-300 block">AI Explanation & Mechanism</span>
-                  <p className="text-slate-200 font-sans leading-relaxed text-xs">{aiAnalysis.explanation}</p>
-                </div>
-              )}
-
-              {aiAnalysis.possible_cause && (
-                <div className="p-3 rounded bg-slate-900/80 border border-slate-800 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-indigo-300 block">Likely Technical Root Cause</span>
-                  <p className="text-slate-200 font-sans leading-relaxed text-xs">{aiAnalysis.possible_cause}</p>
-                </div>
-              )}
-
-              {/* Fact vs Hypothesis Breakdown Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                {/* Observed Facts */}
-                <div className="p-3 rounded bg-slate-900/90 border border-emerald-900/40 space-y-2">
-                  <span className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1">
-                    <span>✓ Observed Empirical Facts</span>
-                  </span>
-                  <ul className="space-y-1.5 text-[11px] font-sans text-slate-300">
-                    {(aiAnalysis.observed_facts && aiAnalysis.observed_facts.length > 0) ? (
-                      aiAnalysis.observed_facts.map((fact: string, idx: number) => (
-                        <li key={idx} className="flex items-start gap-1.5">
-                          <span className="text-emerald-400 font-bold shrink-0">•</span>
-                          <span>{fact}</span>
-                        </li>
-                      ))
-                    ) : (
-                      <li className="text-slate-500 italic">No specific facts isolated.</li>
-                    )}
-                  </ul>
-                </div>
-
-                {/* Hypotheses */}
-                <div className="p-3 rounded bg-slate-900/90 border border-purple-900/40 space-y-2">
-                  <span className="text-[10px] uppercase font-bold text-purple-400 flex items-center gap-1">
-                    <span>💡 Root Cause Hypotheses</span>
-                  </span>
-                  <ul className="space-y-1.5 text-[11px] font-sans text-slate-300">
-                    {(aiAnalysis.hypotheses && aiAnalysis.hypotheses.length > 0) ? (
-                      aiAnalysis.hypotheses.map((hyp: string, idx: number) => (
-                        <li key={idx} className="flex items-start gap-1.5">
-                          <span className="text-purple-400 font-bold shrink-0">?</span>
-                          <span>{hyp}</span>
-                        </li>
-                      ))
-                    ) : (
-                      <li className="text-slate-500 italic">No hypotheses generated.</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-
-              {/* Uncertainty Callout */}
-              {aiAnalysis.uncertainty && (
-                <div className="p-2.5 rounded bg-amber-950/20 border border-amber-900/40 text-amber-200 text-[11px] font-sans flex items-start gap-2">
-                  <span className="shrink-0 text-amber-400">⚠️</span>
-                  <div>
-                    <span className="font-bold text-amber-300 block mb-0.5">Uncertainty & Unknowns:</span>
-                    <span>{aiAnalysis.uncertainty}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Actionable Recommendation */}
-              {aiAnalysis.recommendation && (
-                <div className="p-3 rounded bg-emerald-950/20 border border-emerald-900/40 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-emerald-300 block">🛠 Remediation Guidance</span>
-                  <p className="text-emerald-100 font-sans leading-relaxed text-xs">{aiAnalysis.recommendation}</p>
-                </div>
-              )}
-
-              {/* Investigation Suggestions */}
-              {aiAnalysis.investigation_suggestion && (
-                <div className="p-2.5 rounded bg-slate-900 border border-slate-800 text-[11px] font-sans text-slate-300">
-                  <span className="font-bold text-slate-400 block mb-0.5">🔍 Next Investigation Steps:</span>
-                  <span>{aiAnalysis.investigation_suggestion}</span>
-                </div>
-              )}
-            </div>
-          )}
+          ))}
         </div>
 
-        {/* Deterministic Reproduction Section */}
-        <div className="p-4 rounded-lg bg-indigo-950/20 border border-indigo-900/40 space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h3 className="text-xs uppercase text-indigo-300 font-bold flex items-center gap-1.5">
-                <span>🔄 Deterministic Issue Reproduction</span>
-              </h3>
-              <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-                Replays the exact structured action sequence in an isolated context to verify if the issue recurs.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={reproAttempts}
-                onChange={(e) => setReproAttempts(Number(e.target.value))}
-                disabled={reproducing}
-                className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1"
-              >
-                <option value={1}>1 Attempt (Quick)</option>
-                <option value={3}>3 Attempts (Intermittency)</option>
-              </select>
-              <button
-                onClick={handleRunReproduction}
-                disabled={reproducing}
-                className="px-3.5 py-1.5 rounded text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {reproducing ? (
-                  <>
-                    <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                    <span>Replaying Actions...</span>
-                  </>
-                ) : (
-                  <span>▶ Run Reproduction</span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {reproError && (
-            <div className="p-2.5 rounded bg-red-950/50 border border-red-900 text-red-300 text-xs">
-              {reproError}
+        {/* Modal Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {error && (
+            <div
+              className="p-3 rounded-lg text-xs font-mono border"
+              style={{ background: '#1a0a0a', borderColor: '#7f1d1d', color: '#fca5a5' }}
+            >
+              ⚠ {error}
             </div>
           )}
 
-          {/* Latest Reproduction Result */}
-          {latestReproduction && (
-            <div className="p-3 rounded bg-slate-950 border border-slate-800/90 space-y-2">
-              <div className="flex items-center justify-between text-xs flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">Reproduction Result:</span>
-                  <ReproductionStatusBadge status={latestReproduction.status} />
-                  <span className="text-slate-500 text-[11px]">
-                    ({latestReproduction.successful_attempts}/{latestReproduction.attempts} attempts reproduced)
-                  </span>
+          {/* TAB 1: OVERVIEW */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Issue Description & Observed Facts
+                </h3>
+                <div
+                  className="p-4 rounded-lg border text-xs font-mono text-slate-200 leading-relaxed"
+                  style={{ background: '#080811', borderColor: '#1c1c2b' }}
+                >
+                  {finding.description || 'No extended description recorded.'}
                 </div>
-                <span className="text-[10px] text-slate-500">
-                  {new Date(latestReproduction.created_at).toLocaleTimeString()}
-                </span>
               </div>
 
-              {latestReproduction.error_message && (
-                <p className="text-xs text-red-400 font-sans">{latestReproduction.error_message}</p>
+              {finding.recommendation && (
+                <div>
+                  <h3 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Deterministic Recommendation
+                  </h3>
+                  <div
+                    className="p-4 rounded-lg border text-xs font-mono text-emerald-300 leading-relaxed"
+                    style={{ background: '#061a11', borderColor: '#0f3d27' }}
+                  >
+                    💡 {finding.recommendation}
+                  </div>
+                </div>
               )}
 
-              {latestReproduction.fresh_evidence && latestReproduction.fresh_evidence.length > 0 && (
-                <div className="pt-2 border-t border-slate-800/60">
-                  <span className="text-[10px] text-emerald-400 uppercase font-semibold block mb-1">
-                    Fresh Telemetry Captured During Replay ({latestReproduction.fresh_evidence.length} items)
-                  </span>
-                  <div className="space-y-1 max-h-24 overflow-y-auto">
-                    {latestReproduction.fresh_evidence.map((ev: Record<string, any>, idx: number) => (
-                      <div key={idx} className="text-[11px] text-slate-300 p-1.5 rounded bg-slate-900/60 flex items-center justify-between">
-                        <span>{ev.type || 'Signal'}: {ev.message || ev.error || ev.url || `Status ${ev.status_code}`}</span>
-                        <span className="text-emerald-400 text-[10px] font-bold">MATCHED</span>
+              {/* Quick Status Bar */}
+              <div
+                className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-lg border"
+                style={{ background: '#080811', borderColor: '#1c1c2b' }}
+              >
+                <div>
+                  <div className="text-[10px] font-mono text-slate-500 uppercase">Category</div>
+                  <div className="text-xs font-mono font-semibold text-slate-200 uppercase mt-0.5">{finding.category}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-mono text-slate-500 uppercase">Severity</div>
+                  <div className="text-xs font-mono font-semibold text-slate-200 uppercase mt-0.5">{finding.severity}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-mono text-slate-500 uppercase">Status</div>
+                  <div className="text-xs font-mono font-semibold text-slate-200 uppercase mt-0.5">{finding.status}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-mono text-slate-500 uppercase">Reproduction</div>
+                  <div className="text-xs font-mono font-semibold text-slate-200 uppercase mt-0.5">
+                    {reproResult?.status || finding.reproduction?.status || 'not_attempted'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: EVIDENCE */}
+          {activeTab === 'evidence' && (
+            <div className="space-y-6">
+              {/* Screenshots */}
+              {screenshotEv && (
+                <div>
+                  <h3 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Visual Screenshot Evidence
+                  </h3>
+                  <div
+                    className="rounded-lg border overflow-hidden p-2"
+                    style={{ background: '#080811', borderColor: '#1c1c2b' }}
+                  >
+                    <img
+                      src={`/api/tests/${testId}/screenshot?t=${Date.now()}`}
+                      alt="Finding Screenshot"
+                      className="w-full max-h-80 object-contain rounded bg-black"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Console & Exceptions */}
+              <div>
+                <h3 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Console & Exception Evidence ({consoleEvList.length})
+                </h3>
+                {consoleEvList.length === 0 ? (
+                  <p className="text-xs font-mono text-slate-600">No console errors attached.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {consoleEvList.map((ev, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg border text-xs font-mono text-red-300"
+                        style={{ background: '#180a0a', borderColor: '#3b1616' }}
+                      >
+                        <div className="font-semibold">{ev.message || ev.text || JSON.stringify(ev)}</div>
+                        {ev.stack && (
+                          <pre className="text-[10px] text-slate-400 mt-2 whitespace-pre-wrap overflow-x-auto">
+                            {ev.stack}
+                          </pre>
+                        )}
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+
+              {/* Network Requests */}
+              <div>
+                <h3 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Network Evidence ({networkEvList.length})
+                </h3>
+                {networkEvList.length === 0 ? (
+                  <p className="text-xs font-mono text-slate-600">No failed network requests attached.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {networkEvList.map((ev, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg border text-xs font-mono flex items-start justify-between gap-3"
+                        style={{ background: '#080811', borderColor: '#1c1c2b' }}
+                      >
+                        <div className="min-w-0">
+                          <span className="text-amber-400 font-bold mr-2">[{ev.method || 'GET'}]</span>
+                          <span className="text-slate-200 break-all">{ev.url}</span>
+                          {ev.failure_text && (
+                            <div className="text-red-400 text-[11px] mt-1">{ev.failure_text}</div>
+                          )}
+                        </div>
+                        {ev.status_code && <StatusCodeBadge code={ev.status_code} />}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: REPRODUCTION */}
+          {activeTab === 'reproduction' && (
+            <div className="space-y-6">
+              {/* Reproduction Control Card */}
+              <div
+                className="p-4 rounded-lg border flex flex-wrap items-center justify-between gap-4"
+                style={{ background: '#080811', borderColor: '#1c1c2b' }}
+              >
+                <div>
+                  <div className="text-xs font-mono font-semibold text-slate-200">
+                    Deterministic Replay Engine
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                    Replays the exact structured action sequence in a clean browser session
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-mono text-slate-400">Attempts:</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={reproAttempts}
+                      onChange={(e) => setReproAttempts(Number(e.target.value))}
+                      className="w-14 px-2 py-1 rounded text-xs font-mono text-slate-200 border outline-none"
+                      style={{ background: '#11111d', borderColor: '#26263b' }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleReproduce}
+                    disabled={reproducing || actionSequence.length === 0}
+                    className="px-4 py-2 rounded-lg text-xs font-mono font-bold text-white transition-all shadow-md
+                               disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                    style={{ background: '#6366f1' }}
+                  >
+                    {reproducing ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Replaying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>↻ Reproduce Issue</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Replay Sequence */}
+              <div>
+                <h3 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Action Replay Sequence ({actionSequence.length} steps)
+                </h3>
+                {actionSequence.length === 0 ? (
+                  <div className="p-4 rounded-lg border text-xs font-mono text-slate-600" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+                    No recorded action sequence available for this finding.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 font-mono text-xs">
+                    {actionSequence.map((act, i) => (
+                      <div
+                        key={i}
+                        className="px-3 py-2 rounded border flex items-center gap-3"
+                        style={{ background: '#090912', borderColor: '#1c1c2b' }}
+                      >
+                        <span className="text-slate-600 font-bold text-[10px]">#{i + 1}</span>
+                        <span className="text-indigo-400 font-semibold">{act}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Reproduction Results */}
+              {reproResult && (
+                <div>
+                  <h3 className="text-xs font-mono font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Latest Reproduction Outcome
+                  </h3>
+                  <div
+                    className="p-4 rounded-lg border space-y-2 text-xs font-mono"
+                    style={{ background: '#080811', borderColor: '#1c1c2b' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Status:</span>
+                      <ReproductionStatusBadge status={reproResult.status} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Success Rate:</span>
+                      <span className="text-slate-200">
+                        {reproResult.successful_attempts} / {reproResult.attempts} attempts
+                      </span>
+                    </div>
+                    {reproResult.error_message && (
+                      <div className="text-red-400 text-[11px] pt-1 border-t border-slate-800">
+                        Error: {reproResult.error_message}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           )}
-        </div>
 
-        {/* Action Sequence Section */}
-        <div>
-          <h3 className="text-xs uppercase text-slate-400 font-semibold mb-2">
-            Structured Action Replay Sequence ({actionSequence.length || 1} steps)
-          </h3>
-          {actionSequence.length === 0 ? (
-            <div className="p-2.5 rounded bg-slate-950 border border-slate-800 text-xs text-slate-400">
-              <code>NAVIGATE("{finding.evidence?.[0]?.url || 'TARGET_URL'}")</code>
-            </div>
-          ) : (
-            <div className="space-y-1.5 p-3 rounded bg-slate-950 border border-slate-800 max-h-36 overflow-y-auto">
-              {actionSequence.map((step, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-xs">
-                  <span className="text-slate-600 text-[10px] w-5 text-right">{idx + 1}.</span>
-                  <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-indigo-300 font-mono text-[11px]">
-                    {step}
-                  </span>
+          {/* TAB 4: AI ROOT CAUSE REASONING */}
+          {activeTab === 'ai' && (
+            <div className="space-y-6">
+              {/* Trigger button */}
+              <div
+                className="p-4 rounded-lg border flex items-center justify-between gap-4"
+                style={{ background: '#080811', borderColor: '#1c1c2b' }}
+              >
+                <div>
+                  <div className="text-xs font-mono font-semibold text-slate-200 flex items-center gap-2">
+                    <span>✨ Gemini AI Root Cause Analysis</span>
+                    {aiAnalysis?.model_name && (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+                        {aiAnalysis.model_name}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                    Analyzes finding telemetry, categorizes root causes, and generates remediation advice
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Description */}
-        <div>
-          <h3 className="text-xs uppercase text-slate-500 font-semibold mb-1">Description</h3>
-          <p className="text-xs text-slate-300 font-sans whitespace-pre-wrap leading-relaxed bg-slate-950/60 p-3 rounded border border-slate-800/80">
-            {finding.description || 'No description provided.'}
-          </p>
-        </div>
-
-        {/* Recommendation */}
-        {finding.recommendation && (
-          <div>
-            <h3 className="text-xs uppercase text-amber-400 font-semibold mb-1 flex items-center gap-1.5">
-              <span>💡 Actionable Recommendation</span>
-            </h3>
-            <div className="text-xs text-amber-200/90 font-sans leading-relaxed bg-amber-950/20 p-3 rounded border border-amber-800/30">
-              {finding.recommendation}
-            </div>
-          </div>
-        )}
-
-        {/* Fingerprint */}
-        {finding.fingerprint && (
-          <div>
-            <h3 className="text-xs uppercase text-slate-500 font-semibold mb-1">Stable Fingerprint (SHA-256)</h3>
-            <div className="text-[11px] text-indigo-300/90 bg-slate-950 p-2.5 rounded border border-slate-800 break-all">
-              {finding.fingerprint}
-            </div>
-          </div>
-        )}
-
-        {/* Evidence Timeline */}
-        <div>
-          <h3 className="text-xs uppercase text-slate-400 font-semibold mb-2">
-            Evidence Timeline ({finding.evidence?.length || 0} occurrence{finding.evidence?.length !== 1 ? 's' : ''})
-          </h3>
-          {(!finding.evidence || finding.evidence.length === 0) ? (
-            <p className="text-xs text-slate-600">No raw evidence items attached.</p>
-          ) : (
-            <div className="space-y-3">
-              {finding.evidence.map((ev, idx) => (
-                <div
-                  key={idx}
-                  className="p-3 rounded-lg border bg-slate-950/80 border-slate-800/90 space-y-2 text-xs"
+                <button
+                  onClick={handleAnalyzeAI}
+                  disabled={analyzingAI}
+                  className="px-4 py-2 rounded-lg text-xs font-mono font-bold text-white transition-all shadow-md
+                             disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                  style={{ background: '#6366f1' }}
                 >
-                  <div className="flex items-center justify-between text-slate-400 border-b border-slate-800/50 pb-1.5">
-                    <span className="font-semibold text-indigo-400 uppercase text-[10px]">
-                      Evidence #{idx + 1} — {ev.type || 'Signal'}
-                    </span>
-                    {ev.timestamp && <span className="text-[10px] text-slate-500">{ev.timestamp}</span>}
+                  {analyzingAI ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Reasoning...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>✨ Analyze with Gemini</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {!aiAnalysis ? (
+                <div
+                  className="p-8 rounded-lg border text-center text-xs font-mono text-slate-500"
+                  style={{ background: '#080811', borderColor: '#1c1c2b' }}
+                >
+                  Click "Analyze with Gemini" to run structured AI reasoning over this finding's telemetry.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Facts vs Hypotheses vs Uncertainty Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Observed Facts */}
+                    <div
+                      className="p-4 rounded-lg border"
+                      style={{ background: '#07131e', borderColor: '#0e3a5a' }}
+                    >
+                      <div className="text-xs font-mono font-bold text-sky-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <span>🔍</span> Observed Facts
+                      </div>
+                      <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
+                        {aiAnalysis.observed_facts?.map((fact, i) => (
+                          <li key={i}>{fact}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* AI Hypotheses */}
+                    <div
+                      className="p-4 rounded-lg border"
+                      style={{ background: '#120b1f', borderColor: '#351c5e' }}
+                    >
+                      <div className="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <span>🧠</span> AI Hypotheses
+                      </div>
+                      <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
+                        {aiAnalysis.hypotheses?.map((hyp, i) => (
+                          <li key={i}>{hyp}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Uncertainty & Telemetry Gaps */}
+                    <div
+                      className="p-4 rounded-lg border"
+                      style={{ background: '#181206', borderColor: '#4a340e' }}
+                    >
+                      <div className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <span>⚠️</span> Uncertainty / Gaps
+                      </div>
+                      <p className="text-xs font-mono text-slate-300 leading-relaxed">
+                        {aiAnalysis.uncertainty || 'No telemetry ambiguity identified.'}
+                      </p>
+                    </div>
                   </div>
 
-                  {ev.url && (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-slate-500 text-[10px] shrink-0">URL:</span>
-                      <span className="text-slate-200 break-all">{ev.url}</span>
-                    </div>
-                  )}
-
-                  {ev.status_code && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-500 text-[10px]">Status:</span>
-                      <StatusCodeBadge code={ev.status_code} />
-                    </div>
-                  )}
-
-                  {ev.failure_text && (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-red-400 text-[10px] shrink-0">Error:</span>
-                      <span className="text-red-300">{ev.failure_text}</span>
-                    </div>
-                  )}
-
-                  {ev.message && (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-amber-400 text-[10px] shrink-0">Message:</span>
-                      <span className="text-amber-200 break-all">{ev.message}</span>
-                    </div>
-                  )}
-
-                  {ev.stack && (
+                  {/* Remediation & Possible Cause */}
+                  <div
+                    className="p-4 rounded-lg border space-y-3"
+                    style={{ background: '#080811', borderColor: '#1c1c2b' }}
+                  >
                     <div>
-                      <span className="text-slate-500 text-[10px] block mb-1">Stack Trace:</span>
-                      <pre className="p-2 rounded bg-black/60 text-red-300 text-[10px] overflow-x-auto whitespace-pre-wrap border border-red-950/60">
-                        {ev.stack}
-                      </pre>
+                      <div className="text-xs font-mono font-bold text-slate-400 uppercase">Possible Cause:</div>
+                      <p className="text-xs font-mono text-slate-200 mt-1">{aiAnalysis.possible_cause}</p>
                     </div>
-                  )}
-
-                  {ev.text && (
-                    <div className="text-slate-300 bg-slate-900/50 p-2 rounded">
-                      {ev.text}
+                    <div>
+                      <div className="text-xs font-mono font-bold text-slate-400 uppercase">Recommendation:</div>
+                      <p className="text-xs font-mono text-emerald-300 mt-1">💡 {aiAnalysis.recommendation}</p>
                     </div>
-                  )}
-
-                  {ev.screenshot_path && (
-                    <div className="text-[10px] text-emerald-400/80">
-                      📸 Viewport snapshot recorded at time of discovery
-                    </div>
-                  )}
+                    {aiAnalysis.investigation_suggestion && (
+                      <div>
+                        <div className="text-xs font-mono font-bold text-slate-400 uppercase">Suggested Next Step:</div>
+                        <p className="text-xs font-mono text-indigo-300 mt-1">🔬 {aiAnalysis.investigation_suggestion}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="pt-3 border-t border-slate-800 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Main Live Test View
+// ---------------------------------------------------------------------------
 
 export function Test() {
   const { id } = useParams<{ id: string }>()
   const [test, setTest] = useState<Test | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [liveScreenshotUrl, setLiveScreenshotUrl] = useState<string | null>(null)
-  const [liveCurrentUrl, setLiveCurrentUrl] = useState<string | null>(null)
-  const [liveTitle, setLiveTitle] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+
+  // Live state
+  const [liveUrl, setLiveUrl] = useState<string>('')
+  const [liveTitle, setLiveTitle] = useState<string>('')
   const [liveStatusCode, setLiveStatusCode] = useState<number | null>(null)
   const [liveDurationMs, setLiveDurationMs] = useState<number | null>(null)
-  const [activeTab, setActiveTab] = useState<'telemetry' | 'findings' | 'actions' | 'elements' | 'signals' | 'state'>('telemetry')
-  const [elementFilter, setElementFilter] = useState<string>('all')
-  const [findingCategoryFilter, setFindingCategoryFilter] = useState<string>('all')
-
-  const [liveActions, setLiveActions] = useState<ActionItem[]>([])
-  const [liveFindings, setLiveFindings] = useState<Finding[]>([])
-  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null)
+  const [liveFingerprint, setLiveFingerprint] = useState<string | null>(null)
   const [liveElements, setLiveElements] = useState<InteractiveElement[]>([])
-  const [liveConsoleMessages, setLiveConsoleMessages] = useState<ConsoleMessage[]>([])
+  const [liveConsoleMsgs, setLiveConsoleMsgs] = useState<ConsoleMessage[]>([])
+  const [liveConsoleErrors, setLiveConsoleErrors] = useState<string[]>([])
   const [liveJsExceptions, setLiveJsExceptions] = useState<JavaScriptException[]>([])
   const [liveFailedRequests, setLiveFailedRequests] = useState<FailedRequest[]>([])
-  const [liveFingerprint, setLiveFingerprint] = useState<string | null>(null)
-  const [liveViewport, setLiveViewport] = useState<{ width: number; height: number } | null>(null)
-  const [liveDimensions, setLiveDimensions] = useState<{ width: number; height: number } | null>(null)
-  const [discoveredStatesCount, setDiscoveredStatesCount] = useState<number>(0)
+  const [screenshotTimestamp, setScreenshotTimestamp] = useState<number>(Date.now())
+  const [fullImageModal, setFullImageModal] = useState(false)
 
-  const { events } = useTestEvents(id ?? null)
-  const logRef = useRef<HTMLDivElement>(null)
+  // Metrics counters
+  const [statesCount, setStatesCount] = useState<number>(0)
+  const [actionsCount, setActionsCount] = useState<number>(0)
+  const [findings, setFindings] = useState<Finding[]>([])
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null)
 
-  // Initial fetch
+  // Timeline events
+  const [timelineEvents, setTimelineEvents] = useState<
+    Array<{ id: string; time: string; type: string; label: string; detail?: string; success?: boolean; color?: string }>
+  >([])
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'actions' | 'observations' | 'findings'>('all')
+  const [autoScroll, setAutoScroll] = useState(true)
+  const timelineEndRef = useRef<HTMLDivElement>(null)
+
+  // Findings filters
+  const [findingSearch, setFindingSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [severityFilter, setSeverityFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  // Elements drawer
+  const [showElementsDrawer, setShowElementsDrawer] = useState(false)
+  const [elementSearch, setElementSearch] = useState('')
+
+  // AI Summary
+  const [analyzingSummary, setAnalyzingSummary] = useState(false)
+  const [aiSummary, setAiSummary] = useState<TestSummaryAnalysis | null>(null)
+
+  // Timer
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+  // Load initial data
   useEffect(() => {
     if (!id) return
     api.getTest(id)
-      .then((data) => {
-        setTest(data)
-        if (data.screenshot_url) setLiveScreenshotUrl(data.screenshot_url)
-        if (data.current_url) setLiveCurrentUrl(data.current_url)
-        if (data.page_title) setLiveTitle(data.page_title)
-        if (data.status_code) setLiveStatusCode(data.status_code)
-        if (data.duration_ms) setLiveDurationMs(data.duration_ms)
-        if (data.actions) setLiveActions(data.actions)
-        if (data.findings) setLiveFindings(data.findings)
+      .then((t) => {
+        setTest(t)
+        setLiveUrl(t.current_url || t.url)
+        setLiveTitle(t.page_title || '')
+        setLiveStatusCode(t.status_code ?? null)
+        setLiveDurationMs(t.duration_ms ?? null)
+        setFindings(t.findings || [])
+        setActionsCount(t.actions?.length || 0)
+        setStatesCount(t.observations?.length || 0)
+        setAiSummary((t.ai_summary as TestSummaryAnalysis) || null)
 
-        if (data.observations && data.observations.length > 0) {
-          setDiscoveredStatesCount(data.observations.length)
-          const latest = data.observations[data.observations.length - 1]
-          if (latest.elements_data) setLiveElements(latest.elements_data)
-          if (latest.console_messages) setLiveConsoleMessages(latest.console_messages)
-          if (latest.js_exceptions) setLiveJsExceptions(latest.js_exceptions)
-          if (latest.failed_requests) setLiveFailedRequests(latest.failed_requests)
-          if (latest.fingerprint) setLiveFingerprint(latest.fingerprint)
-          if (latest.viewport) setLiveViewport(latest.viewport)
-          if (latest.page_dimensions) setLiveDimensions(latest.page_dimensions)
+        // Populate historical events
+        const historical: typeof timelineEvents = []
+        if (t.started_at) {
+          historical.push({
+            id: 'start',
+            time: formatTime(t.started_at),
+            type: 'status',
+            label: `Test Started: ${t.url}`,
+            color: '#6366f1',
+          })
+        }
+        for (const act of t.actions || []) {
+          historical.push({
+            id: act.id,
+            time: formatTime(act.timestamp),
+            type: 'action',
+            label: `${act.action_type.toUpperCase()} ${act.target || ''}`,
+            detail: act.description || act.value || undefined,
+            success: act.success,
+            color: act.success ? '#22c55e' : '#ef4444',
+          })
+        }
+        for (const obs of t.observations || []) {
+          historical.push({
+            id: obs.id,
+            time: formatTime(obs.timestamp),
+            type: 'observation',
+            label: `Observe ${obs.url}`,
+            detail: obs.title ? `"${obs.title}" (${obs.element_count} elements)` : undefined,
+            color: '#818cf8',
+          })
+        }
+        for (const f of t.findings || []) {
+          historical.push({
+            id: f.id,
+            time: formatTime(f.timestamp),
+            type: 'finding',
+            label: `Finding: [${f.severity.toUpperCase()}] ${f.title}`,
+            detail: f.category,
+            color: SEVERITY_COLORS[f.severity] || '#f59e0b',
+          })
+        }
+        setTimelineEvents(historical)
+
+        if (t.observations && t.observations.length > 0) {
+          const latestObs = t.observations[t.observations.length - 1]
+          setLiveElements(latestObs.elements_data || [])
+          setLiveConsoleMsgs(latestObs.console_messages || [])
+          setLiveConsoleErrors(latestObs.console_errors || [])
+          setLiveJsExceptions(latestObs.js_exceptions || [])
+          setLiveFailedRequests(latestObs.failed_requests || [])
+          setLiveFingerprint(latestObs.fingerprint || null)
         }
       })
-      .catch((e) => setLoadError(e.message))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
   }, [id])
 
-  // Auto-scroll log to bottom
+  // Live timer
   useEffect(() => {
-    const el = logRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [events])
+    if (!test || test.status !== 'running') return
+    const interval = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [test?.status])
 
-  // Process live events from SSE
-  useEffect(() => {
-    if (!events.length) return
-    const last = events[events.length - 1]
+  // SSE Stream
+  useTestEvents(id ?? '', {
+    onEvent: (event: SSEEvent) => {
+      const timeStr = new Date().toLocaleTimeString([], { hour12: false })
 
-    if (last.type === 'action_completed' || last.type === 'action_failed') {
-      const newAction: ActionItem = {
-        id: `act-${Date.now()}`,
-        action_type: last.action_type || 'UNKNOWN',
-        target: last.target,
-        value: last.value,
-        description: last.description,
-        success: last.type === 'action_completed',
-        error: last.error,
-        duration_ms: last.duration_ms,
-        timestamp: new Date().toISOString(),
-      }
-      setLiveActions((prev) => [...prev, newAction])
-      if (last.new_url) setLiveCurrentUrl(last.new_url)
-    } else if (last.type === 'observation') {
-      if (last.url) setLiveCurrentUrl(last.url)
-      if (last.title) setLiveTitle(last.title)
-      if (last.status_code) setLiveStatusCode(last.status_code)
-      if (last.duration_ms) setLiveDurationMs(last.duration_ms)
-      if (last.screenshot_url) setLiveScreenshotUrl(`${last.screenshot_url}?t=${Date.now()}`)
-      if (last.elements) setLiveElements(last.elements)
-      if (last.console_messages) setLiveConsoleMessages(last.console_messages)
-      if (last.js_exceptions) setLiveJsExceptions(last.js_exceptions)
-      if (last.failed_requests) setLiveFailedRequests(last.failed_requests)
-      if (last.fingerprint) setLiveFingerprint(last.fingerprint)
-      if (last.viewport) setLiveViewport(last.viewport)
-      if (last.page_dimensions) setLiveDimensions(last.page_dimensions)
-      setDiscoveredStatesCount((prev) => prev + 1)
-    } else if (last.type === 'finding') {
-      const findingId = last.id || `find-${Date.now()}`
-      const incomingFinding: Finding = {
-        id: findingId,
-        severity: last.severity || 'medium',
-        category: last.category || 'other',
-        status: last.status || 'potential',
-        confidence: last.confidence ?? 0.85,
-        title: last.title || 'Detected Finding',
-        description: last.description || '',
-        evidence: last.evidence || [],
-        reproduction: last.reproduction,
-        recommendation: last.recommendation,
-        fingerprint: last.fingerprint,
-        timestamp: new Date().toISOString(),
-      }
-      setLiveFindings((prev) => {
-        const matchIdx = prev.findIndex(
-          (f) => (incomingFinding.fingerprint && f.fingerprint === incomingFinding.fingerprint) || f.id === incomingFinding.id
-        )
-        if (matchIdx >= 0) {
-          const updated = [...prev]
-          const existing = updated[matchIdx]
-          updated[matchIdx] = {
-            ...existing,
-            ...incomingFinding,
-            evidence: [...(existing.evidence || []), ...(incomingFinding.evidence || [])],
-          }
-          return updated
+      if (event.type === 'status') {
+        if (event.status) {
+          setTest((prev) => (prev ? { ...prev, status: event.status as any } : null))
         }
-        return [...prev, incomingFinding]
-      })
-    } else if (last.type === 'finding_reproduced' && last.finding_id) {
-      setLiveFindings((prev) =>
-        prev.map((f) => {
-          if (f.id === last.finding_id) {
-            return {
-              ...f,
-              status: last.status || f.status,
-            }
-          }
-          return f
-        })
-      )
-    } else if (last.type === 'finding_analyzed' && last.finding_id) {
-      setLiveFindings((prev) =>
-        prev.map((f) => {
-          if (f.id === last.finding_id) {
-            return {
-              ...f,
-              ai_analysis: (last as any).ai_analysis || f.ai_analysis,
-            }
-          }
-          return f
-        })
-      )
-    } else if (last.type === 'test_analyzed' && (last as any).ai_summary) {
-      setTest((prev) => (prev ? { ...prev, ai_summary: (last as any).ai_summary } : prev))
-    } else if (last.type === 'screenshot' && last.url) {
-      setLiveScreenshotUrl(`${last.url}?t=${Date.now()}`)
-    } else if (last.type === 'status') {
-      if (last.current_url) setLiveCurrentUrl(last.current_url)
-      if (last.page_title) setLiveTitle(last.page_title)
-      if (last.status_code) setLiveStatusCode(last.status_code)
-      if (last.duration_ms) setLiveDurationMs(last.duration_ms)
-      if (last.screenshot_url) setLiveScreenshotUrl(`${last.screenshot_url}?t=${Date.now()}`)
-      if (last.states_count !== undefined) setDiscoveredStatesCount(last.states_count)
-
-      if (id) {
-        api.getTest(id).then(setTest).catch(() => {})
+        setTimelineEvents((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            time: timeStr,
+            type: 'status',
+            label: event.message || `Status changed to ${event.status}`,
+            color: STATUS_COLORS[event.status || ''] || '#6b7280',
+          },
+        ])
+        if (event.actions_count !== undefined) setActionsCount(event.actions_count)
+        if (event.states_count !== undefined) setStatesCount(event.states_count)
       }
+
+      if (event.type === 'observation') {
+        setLiveUrl(event.url || event.requested_url || '')
+        if (event.title) setLiveTitle(event.title)
+        if (event.status_code !== undefined) setLiveStatusCode(event.status_code)
+        if (event.duration_ms !== undefined) setLiveDurationMs(event.duration_ms)
+        if (event.elements) setLiveElements(event.elements)
+        if (event.fingerprint) setLiveFingerprint(event.fingerprint)
+        if (event.console_messages) setLiveConsoleMsgs(event.console_messages)
+        if (event.console_errors) {
+          setLiveConsoleErrors(Array.isArray(event.console_errors) ? event.console_errors : [])
+        }
+        if (event.js_exceptions) setLiveJsExceptions(event.js_exceptions)
+        if (event.failed_requests) setLiveFailedRequests(event.failed_requests)
+
+        setStatesCount((prev) => prev + 1)
+        setScreenshotTimestamp(Date.now())
+
+        setTimelineEvents((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            time: timeStr,
+            type: 'observation',
+            label: `Observe ${event.url || event.requested_url}`,
+            detail: event.title ? `"${event.title}"` : undefined,
+            color: '#818cf8',
+          },
+        ])
+      }
+
+      if (event.type === 'action_completed') {
+        setActionsCount((prev) => prev + 1)
+        setTimelineEvents((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            time: timeStr,
+            type: 'action',
+            label: event.description || `Action ${event.action_type}`,
+            detail: event.new_url ? `→ ${event.new_url}` : undefined,
+            success: true,
+            color: '#22c55e',
+          },
+        ])
+      }
+
+      if (event.type === 'action_failed') {
+        setActionsCount((prev) => prev + 1)
+        setTimelineEvents((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            time: timeStr,
+            type: 'action',
+            label: event.description || `Action Failed`,
+            success: false,
+            color: '#ef4444',
+          },
+        ])
+      }
+
+      if (event.type === 'finding') {
+        const newFinding: Finding = {
+          id: event.finding_id || event.id || `${Date.now()}`,
+          title: event.title || event.description || 'Discovered Signal',
+          description: event.description || '',
+          category: event.category || 'functional',
+          severity: event.severity || 'medium',
+          status: event.status || 'potential',
+          confidence: event.confidence ?? 0.8,
+          evidence: event.evidence || [],
+          reproduction: event.reproduction || null,
+          recommendation: event.recommendation || null,
+          timestamp: new Date().toISOString(),
+        }
+        setFindings((prev) => {
+          const exists = prev.some((f) => f.id === newFinding.id)
+          return exists ? prev : [newFinding, ...prev]
+        })
+        setTimelineEvents((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            time: timeStr,
+            type: 'finding',
+            label: `Finding: [${newFinding.severity.toUpperCase()}] ${newFinding.title}`,
+            detail: newFinding.category,
+            color: SEVERITY_COLORS[newFinding.severity] || '#f59e0b',
+          },
+        ])
+      }
+
+      if (event.type === 'screenshot') {
+        setScreenshotTimestamp(Date.now())
+      }
+
+      if (event.type === 'test_analyzed' && event.ai_summary) {
+        setAiSummary(event.ai_summary as any)
+      }
+    },
+  })
+
+  // Auto-scroll timeline
+  useEffect(() => {
+    if (autoScroll && timelineEndRef.current) {
+      timelineEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [events, id])
+  }, [timelineEvents, autoScroll])
 
   const handleCancel = async () => {
-    if (!id) return
+    if (!id || cancelling) return
+    setCancelling(true)
     try {
       await api.cancelTest(id)
-      const updated = await api.getTest(id)
-      setTest(updated)
-    } catch (e) {
-      console.error(e)
+      setTest((prev) => (prev ? { ...prev, status: 'cancelled' } : null))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel test')
+    } finally {
+      setCancelling(false)
     }
   }
 
-  if (loadError) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <p className="text-red-400 font-mono text-sm mb-3">{loadError}</p>
-          <Link to="/" className="text-xs font-mono text-indigo-400 hover:underline">← Back to Home</Link>
-        </div>
-      </div>
-    )
+  const handleGenerateSummary = async () => {
+    if (!id || analyzingSummary) return
+    setAnalyzingSummary(true)
+    setError(null)
+    try {
+      const summary = await api.analyzeTest(id)
+      setAiSummary(summary)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate AI summary')
+    } finally {
+      setAnalyzingSummary(false)
+    }
   }
 
-  if (!test) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <span className="text-xs font-mono text-slate-500 animate-pulse">Loading PROBE session...</span>
-      </div>
-    )
-  }
+  // Filtered Findings
+  const potentialCount = findings.filter((f) => String(f.status) === 'potential').length
+  const confirmedCount = findings.filter((f) => String(f.status) === 'confirmed').length
 
-  const isActive = test.status === 'running'
-  const displayUrl = liveCurrentUrl || test.current_url || test.url
-  const displayTitle = liveTitle || test.page_title || '—'
-  const displayStatusCode = liveStatusCode ?? test.status_code
-  const displayDuration = liveDurationMs !== null && liveDurationMs !== undefined
-    ? `${(liveDurationMs / 1000).toFixed(2)}s (${liveDurationMs}ms)`
-    : test.completed_at && test.started_at
-    ? `${((new Date(test.completed_at).getTime() - new Date(test.started_at).getTime()) / 1000).toFixed(2)}s`
-    : '—'
+  const filteredFindings = findings.filter((f) => {
+    const matchesSearch =
+      !findingSearch ||
+      f.title.toLowerCase().includes(findingSearch.toLowerCase()) ||
+      f.description.toLowerCase().includes(findingSearch.toLowerCase()) ||
+      f.category.toLowerCase().includes(findingSearch.toLowerCase())
+    const matchesCategory = categoryFilter === 'all' || f.category === categoryFilter
+    const matchesSeverity = severityFilter === 'all' || f.severity === severityFilter
+    const matchesStatus = statusFilter === 'all' || f.status === statusFilter
+    return matchesSearch && matchesCategory && matchesSeverity && matchesStatus
+  })
 
-  const screenshotSrc = liveScreenshotUrl || test.screenshot_url
-
-  // Filter elements
-  const filteredElements = liveElements.filter((el) => {
-    if (elementFilter === 'all') return true
-    if (elementFilter === 'links') return el.type === 'link'
-    if (elementFilter === 'buttons') return el.type === 'button'
-    if (elementFilter === 'inputs') return el.type.startsWith('input') || el.type === 'textarea' || el.type === 'select'
+  // Filtered Timeline
+  const filteredTimeline = timelineEvents.filter((ev) => {
+    if (timelineFilter === 'all') return true
+    if (timelineFilter === 'actions') return ev.type === 'action'
+    if (timelineFilter === 'observations') return ev.type === 'observation'
+    if (timelineFilter === 'findings') return ev.type === 'finding'
     return true
   })
 
-  // Filter findings
-  const filteredFindings = liveFindings.filter((f) => {
-    if (findingCategoryFilter === 'all') return true
-    return f.category === findingCategoryFilter
-  })
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-52px)]">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs font-mono text-slate-400">Loading PROBE test session...</p>
+        </div>
+      </div>
+    )
+  }
 
-  const uniqueCategories = Array.from(new Set(liveFindings.map((f) => f.category))).filter(Boolean)
+  if (error && !test) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center">
+        <div className="p-6 rounded-xl border" style={{ background: '#1a0a0a', borderColor: '#7f1d1d' }}>
+          <p className="text-sm font-mono text-red-300 font-semibold mb-2">Error Loading Test</p>
+          <p className="text-xs font-mono text-slate-400 mb-4">{error}</p>
+          <Link to="/" className="text-xs font-mono text-indigo-400 hover:underline">
+            ← Return to Home
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-6">
-        <Link to="/history" className="text-xs font-mono text-slate-500 hover:text-slate-300">
-          Tests
-        </Link>
-        <span className="text-slate-700 text-xs">/</span>
-        <span className="text-xs font-mono text-slate-400 truncate max-w-xs">{test.id}</span>
-      </div>
-
-      {/* Main Test Details Card */}
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      {/* ------------------------------------------------------------------- */}
+      {/* 1. TOP HEADER & METRICS BAR                                         */}
+      {/* ------------------------------------------------------------------- */}
       <div
-        className="rounded-lg border p-6 mb-6 shadow-lg"
-        style={{ background: '#111118', borderColor: '#1e1e2e' }}
+        className="rounded-xl border p-5 shadow-xl backdrop-blur-sm"
+        style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3 mb-3">
-              <StatusBadge status={test.status} />
-              <StatusCodeBadge code={displayStatusCode} />
-              <span className="text-xs font-mono text-slate-500">
-                {test.platform.toUpperCase()} · {new Date(test.created_at).toLocaleTimeString()}
-              </span>
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
+            <Link
+              to="/history"
+              className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+            >
+              ← History
+            </Link>
+            <span className="text-slate-700">|</span>
+            <StatusBadge status={test?.status || 'pending'} />
+            <div className="min-w-0">
+              <span className="text-xs font-mono text-slate-500 mr-2">Target:</span>
+              <span className="text-sm font-mono font-bold text-slate-100 truncate">{test?.url}</span>
             </div>
-
-            {/* Target & Current URL */}
-            <div className="space-y-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-mono text-slate-500 shrink-0">TARGET:</span>
-                <span className="text-sm font-mono text-indigo-300 break-all">{test.url}</span>
-              </div>
-              {displayUrl && displayUrl !== test.url && (
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-mono text-slate-500 shrink-0">CURRENT:</span>
-                  <span className="text-sm font-mono text-emerald-400 break-all">{displayUrl}</span>
-                </div>
-              )}
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-mono text-slate-500 shrink-0">TITLE:</span>
-                <span className="text-sm font-medium text-slate-200">{displayTitle}</span>
-              </div>
-            </div>
-
-            {test.error_message && (
-              <div className="mt-3 p-3 rounded bg-red-950/40 border border-red-900/50">
-                <p className="text-xs font-mono text-red-400">{test.error_message}</p>
-              </div>
-            )}
           </div>
 
-          {isActive && (
+          <div className="flex items-center gap-3">
+            {test?.status === 'running' && (
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-amber-300 bg-amber-950/40 border border-amber-800/60 hover:bg-amber-900/50 transition-colors cursor-pointer"
+              >
+                {cancelling ? 'Cancelling...' : '■ Cancel Test'}
+              </button>
+            )}
             <button
-              onClick={handleCancel}
-              className="shrink-0 px-3.5 py-1.5 rounded text-xs font-mono border transition-colors hover:bg-red-950 hover:border-red-800"
-              style={{ borderColor: '#2d1f1f', color: '#ef4444' }}
+              onClick={handleGenerateSummary}
+              disabled={analyzingSummary}
+              className="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-indigo-200 bg-indigo-950/60 border border-indigo-700/60 hover:bg-indigo-900/60 transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              Cancel Test
+              {analyzingSummary ? 'Summarizing...' : '✨ Executive Summary'}
             </button>
+          </div>
+        </div>
+
+        {/* Live Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-4">
+          {/* Current URL */}
+          <div className="col-span-2 p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+            <div className="text-[10px] font-mono text-slate-500 uppercase">Live URL</div>
+            <div className="text-xs font-mono font-semibold text-slate-200 truncate mt-0.5" title={liveUrl}>
+              {liveUrl || '—'}
+            </div>
+          </div>
+
+          {/* Elapsed Time */}
+          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+            <div className="text-[10px] font-mono text-slate-500 uppercase">Elapsed Time</div>
+            <div className="text-xs font-mono font-bold text-indigo-400 mt-0.5">
+              {test?.status === 'running' ? formatElapsed(elapsedSeconds) : liveDurationMs ? `${(liveDurationMs / 1000).toFixed(1)}s` : 'Completed'}
+            </div>
+          </div>
+
+          {/* States Explored */}
+          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+            <div className="text-[10px] font-mono text-slate-500 uppercase">States Explored</div>
+            <div className="text-base font-mono font-bold text-slate-100 mt-0.5">{statesCount}</div>
+          </div>
+
+          {/* Actions Performed */}
+          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+            <div className="text-[10px] font-mono text-slate-500 uppercase">Actions Performed</div>
+            <div className="text-base font-mono font-bold text-slate-100 mt-0.5">{actionsCount}</div>
+          </div>
+
+          {/* Potential / Confirmed Findings */}
+          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+            <div className="text-[10px] font-mono text-slate-500 uppercase">Findings</div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs font-mono font-bold text-sky-400" title="Potential">
+                {potentialCount} pot.
+              </span>
+              <span className="text-slate-600">/</span>
+              <span className="text-xs font-mono font-bold text-red-400" title="Confirmed">
+                {confirmedCount} conf.
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* 2. MAIN 2-COLUMN GRID: Current State & Latest Screenshot            */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column: Current Application State */}
+        <div
+          className="rounded-xl border p-5 shadow-xl flex flex-col justify-between space-y-4"
+          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
+        >
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <span>🌐</span> Current Application State
+              </h2>
+              {liveStatusCode && <StatusCodeBadge code={liveStatusCode} />}
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <div>
+                <span className="text-[10px] font-mono text-slate-500 uppercase">Page Title</span>
+                <p className="text-xs font-mono text-slate-200 font-semibold truncate mt-0.5">
+                  {liveTitle || 'No Title Recorded'}
+                </p>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-mono text-slate-500 uppercase">State Fingerprint</span>
+                <p className="text-[11px] font-mono text-indigo-300 font-mono break-all mt-0.5">
+                  {liveFingerprint || '—'}
+                </p>
+              </div>
+
+              {/* Discovered Elements Counter */}
+              <div
+                className="p-3 rounded-lg border flex items-center justify-between"
+                style={{ background: '#080811', borderColor: '#1c1c2b' }}
+              >
+                <div>
+                  <div className="text-xs font-mono font-semibold text-slate-200">
+                    Discovered Interactive Elements ({liveElements.length})
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-500">
+                    Links, buttons, inputs, selects extracted by Playwright
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowElementsDrawer(!showElementsDrawer)}
+                  className="px-2.5 py-1 rounded text-[11px] font-mono font-semibold text-indigo-300 border border-indigo-800 bg-indigo-950/50 hover:bg-indigo-900/50 transition-colors cursor-pointer"
+                >
+                  {showElementsDrawer ? 'Hide Elements' : 'View Elements →'}
+                </button>
+              </div>
+
+              {/* Signals Counter Badges */}
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                <div
+                  className="p-2.5 rounded border text-center"
+                  style={{
+                    background: liveConsoleErrors.length > 0 ? '#1f0d0d' : '#080811',
+                    borderColor: liveConsoleErrors.length > 0 ? '#5a1d1d' : '#1c1c2b',
+                  }}
+                >
+                  <div className="text-[10px] font-mono text-slate-500">Console Errors</div>
+                  <div className={`text-xs font-mono font-bold mt-0.5 ${liveConsoleErrors.length > 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                    {liveConsoleErrors.length}
+                  </div>
+                </div>
+
+                <div
+                  className="p-2.5 rounded border text-center"
+                  style={{
+                    background: liveJsExceptions.length > 0 ? '#1f0d0d' : '#080811',
+                    borderColor: liveJsExceptions.length > 0 ? '#5a1d1d' : '#1c1c2b',
+                  }}
+                >
+                  <div className="text-[10px] font-mono text-slate-500">JS Exceptions</div>
+                  <div className={`text-xs font-mono font-bold mt-0.5 ${liveJsExceptions.length > 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                    {liveJsExceptions.length}
+                  </div>
+                </div>
+
+                <div
+                  className="p-2.5 rounded border text-center"
+                  style={{
+                    background: liveFailedRequests.length > 0 ? '#1f1406' : '#080811',
+                    borderColor: liveFailedRequests.length > 0 ? '#5e380f' : '#1c1c2b',
+                  }}
+                >
+                  <div className="text-[10px] font-mono text-slate-500">Failed HTTP</div>
+                  <div className={`text-xs font-mono font-bold mt-0.5 ${liveFailedRequests.length > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                    {liveFailedRequests.length}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Elements Drawer Modal */}
+          {showElementsDrawer && (
+            <div className="pt-2 border-t border-slate-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-mono text-slate-400 font-semibold uppercase">Discovered DOM Elements:</span>
+                <input
+                  type="text"
+                  placeholder="Filter elements..."
+                  value={elementSearch}
+                  onChange={(e) => setElementSearch(e.target.value)}
+                  className="px-2 py-0.5 rounded text-[11px] font-mono text-slate-200 border outline-none"
+                  style={{ background: '#080811', borderColor: '#26263b' }}
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto space-y-1 font-mono text-[11px]">
+                {liveElements
+                  .filter((el) => !elementSearch || el.text.toLowerCase().includes(elementSearch.toLowerCase()) || el.reference.includes(elementSearch) || el.tag.includes(elementSearch))
+                  .map((el, i) => (
+                    <div key={i} className="p-1.5 rounded border flex items-center justify-between gap-2" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+                      <div className="truncate">
+                        <span className="text-indigo-400 font-semibold mr-1.5">&lt;{el.tag}&gt;</span>
+                        <span className="text-slate-300 font-medium">{el.text || el.label || el.reference}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 shrink-0">{el.role || el.type}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Telemetry Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mt-6 pt-5 border-t" style={{ borderColor: '#1e1e2e' }}>
-          <Stat label="Status" value={test.status.toUpperCase()} />
-          <Stat label="Actions Executed" value={liveActions.length} />
-          <Stat label="States Discovered" value={discoveredStatesCount || 1} />
-          <Stat label="Elements in State" value={liveElements.length} />
-          <Stat label="Findings Detected" value={liveFindings.length} />
-        </div>
-      </div>
-
-      {/* Observation Tabs Bar */}
-      <div className="flex items-center gap-2 border-b mb-6 pb-2 overflow-x-auto" style={{ borderColor: '#1e1e2e' }}>
-        <button
-          onClick={() => setActiveTab('telemetry')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
-            activeTab === 'telemetry'
-              ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
+        {/* Right Column: Latest Screenshot */}
+        <div
+          className="rounded-xl border p-5 shadow-xl flex flex-col justify-between space-y-3"
+          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
         >
-          Viewport & Live Stream
-        </button>
-        <button
-          onClick={() => setActiveTab('findings')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
-            activeTab === 'findings'
-              ? 'bg-red-600/20 text-red-400 border border-red-500/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Detected Findings ({liveFindings.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('actions')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
-            activeTab === 'actions'
-              ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Executed Actions ({liveActions.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('elements')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
-            activeTab === 'elements'
-              ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Interactive Elements ({liveElements.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('signals')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
-            activeTab === 'signals'
-              ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Browser Signals ({liveConsoleMessages.length + liveJsExceptions.length + liveFailedRequests.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('state')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
-            activeTab === 'state'
-              ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          State & Fingerprint
-        </button>
-      </div>
-
-      {/* TAB 1: Viewport & Live Stream */}
-      {activeTab === 'telemetry' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Screenshot Viewer */}
-          <div
-            className="rounded-lg border flex flex-col overflow-hidden"
-            style={{ background: '#0d0d15', borderColor: '#1e1e2e' }}
-          >
-            <div
-              className="px-4 py-2.5 border-b flex items-center justify-between"
-              style={{ borderColor: '#1e1e2e', background: '#111118' }}
-            >
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block"></span>
-                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80 inline-block"></span>
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500/80 inline-block"></span>
-                <span className="text-xs font-mono text-slate-400 font-semibold ml-1">
-                  Chromium Viewport {liveViewport ? `(${liveViewport.width}×${liveViewport.height})` : ''}
-                </span>
-              </div>
-              {screenshotSrc && (
-                <a
-                  href={screenshotSrc}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-mono text-indigo-400 hover:underline"
-                >
-                  Open Fullscreen ↗
-                </a>
-              )}
-            </div>
-
-            <div className="p-4 flex-1 flex items-center justify-center min-h-[280px] bg-slate-950/60">
-              {screenshotSrc ? (
-                <div className="relative group w-full rounded border border-slate-800/80 overflow-hidden shadow-md">
-                  <img
-                    src={screenshotSrc}
-                    alt="Captured Chromium Viewport"
-                    className="w-full h-auto object-cover max-h-[380px]"
-                  />
-                </div>
-              ) : isActive ? (
-                <div className="text-center py-12">
-                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                  <p className="text-xs font-mono text-slate-400">Autonomous exploration in progress...</p>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <p className="text-xs font-mono text-slate-600">No viewport screenshot captured</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Live Event Stream */}
-          <div
-            className="rounded-lg border flex flex-col"
-            style={{ background: '#0d0d15', borderColor: '#1e1e2e' }}
-          >
-            <div
-              className="px-4 py-2.5 border-b flex items-center justify-between"
-              style={{ borderColor: '#1e1e2e', background: '#111118' }}
-            >
-              <span className="text-xs font-mono text-slate-400 font-semibold uppercase tracking-wider">
-                Autonomous Action Stream
-              </span>
-              {isActive && (
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                  <span className="text-xs font-mono text-indigo-400">exploring</span>
-                </span>
-              )}
-            </div>
-            <div
-              ref={logRef}
-              className="p-4 max-h-[380px] min-h-[280px] overflow-y-auto font-mono space-y-1.5"
-            >
-              {events.length === 0 ? (
-                <p className="text-xs font-mono text-slate-600">Connecting to autonomous test execution...</p>
-              ) : (
-                events.map((e, i) => <EventRow key={i} event={e} />)
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: Detected Findings */}
-      {activeTab === 'findings' && (
-        <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
-          <div className="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2" style={{ borderColor: '#1e1e2e' }}>
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
-              Detected Issues & Findings ({filteredFindings.length})
-            </span>
-            <div className="flex gap-1.5 flex-wrap">
-              <button
-                onClick={() => setFindingCategoryFilter('all')}
-                className={`px-2.5 py-1 rounded text-xs font-mono capitalize transition-colors ${
-                  findingCategoryFilter === 'all'
-                    ? 'bg-red-600 text-white font-semibold'
-                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                All
-              </button>
-              {uniqueCategories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setFindingCategoryFilter(cat)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono capitalize transition-colors ${
-                    findingCategoryFilter === cat
-                      ? 'bg-red-600 text-white font-semibold'
-                      : 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="max-h-[550px] overflow-y-auto">
-            {filteredFindings.length === 0 ? (
-              <div className="p-8 text-center text-xs font-mono text-slate-500">
-                No issues detected matching the selected filter.
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-800/60">
-                {filteredFindings.map((f, i) => (
-                  <div
-                    key={f.id || i}
-                    onClick={() => setSelectedFinding(f)}
-                    className="p-4 hover:bg-slate-900/50 cursor-pointer transition-colors space-y-2 group"
-                  >
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <FindingSeverityBadge severity={f.severity} />
-                        <FindingStatusBadge status={f.status} />
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 uppercase">
-                          {f.category}
-                        </span>
-                        {f.ai_analysis && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800/40">
-                            ✨ AI Analyzed
-                          </span>
-                        )}
-                        {f.confidence !== undefined && (
-                          <span className="text-[10px] font-mono text-indigo-400">
-                            {(f.confidence * 100).toFixed(0)}% conf
-                          </span>
-                        )}
-                        <span className="text-xs font-mono text-slate-100 font-semibold group-hover:text-indigo-300 transition-colors">
-                          {f.title}
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-mono text-slate-500 group-hover:text-slate-300">
-                        Inspect Evidence ({f.evidence?.length || 0}) ↗
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-400 font-sans line-clamp-2">{f.description}</p>
-
-                    {f.recommendation && (
-                      <p className="text-[11px] text-amber-300/80 font-mono line-clamp-1">
-                        💡 {f.recommendation}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: Executed Actions */}
-      {activeTab === 'actions' && (
-        <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
-          <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: '#1e1e2e' }}>
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
-              Executed Action History ({liveActions.length})
-            </span>
-          </div>
-          <div className="max-h-[500px] overflow-y-auto">
-            {liveActions.length === 0 ? (
-              <div className="p-8 text-center text-xs font-mono text-slate-500">
-                No actions executed yet.
-              </div>
-            ) : (
-              <table className="w-full text-left text-xs font-mono">
-                <thead className="sticky top-0 bg-[#0d0d15] border-b" style={{ borderColor: '#1e1e2e' }}>
-                  <tr className="text-slate-400">
-                    <th className="px-4 py-2.5">#</th>
-                    <th className="px-4 py-2.5">Type</th>
-                    <th className="px-4 py-2.5">Description</th>
-                    <th className="px-4 py-2.5">Target / Selector</th>
-                    <th className="px-4 py-2.5">Duration</th>
-                    <th className="px-4 py-2.5">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ borderColor: '#1a1a28' }}>
-                  {liveActions.map((act, i) => (
-                    <tr key={i} className="hover:bg-slate-900/40 transition-colors">
-                      <td className="px-4 py-2.5 text-slate-500">{i + 1}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/40">
-                          {act.action_type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-200 font-medium">
-                        {act.description || act.value || '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-400 max-w-xs truncate" title={act.target || ''}>
-                        {act.target || '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-400">
-                        {act.duration_ms !== null && act.duration_ms !== undefined ? `${act.duration_ms}ms` : '—'}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {act.success ? (
-                          <span className="text-emerald-400 font-semibold">SUCCESS</span>
-                        ) : (
-                          <span className="text-red-400 font-semibold" title={act.error || ''}>
-                            FAILED
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: Interactive Elements */}
-      {activeTab === 'elements' && (
-        <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
-          <div className="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2" style={{ borderColor: '#1e1e2e' }}>
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
-              Discovered UI Elements in Current State ({filteredElements.length})
-            </span>
-            <div className="flex gap-2">
-              {['all', 'links', 'buttons', 'inputs'].map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => setElementFilter(filter)}
-                  className={`px-2.5 py-1 rounded text-xs font-mono capitalize transition-colors ${
-                    elementFilter === filter
-                      ? 'bg-indigo-600 text-white font-semibold'
-                      : 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="max-h-[500px] overflow-y-auto">
-            {filteredElements.length === 0 ? (
-              <div className="p-8 text-center text-xs font-mono text-slate-500">
-                No interactive elements discovered on this page yet.
-              </div>
-            ) : (
-              <table className="w-full text-left text-xs font-mono">
-                <thead className="sticky top-0 bg-[#0d0d15] border-b" style={{ borderColor: '#1e1e2e' }}>
-                  <tr className="text-slate-400">
-                    <th className="px-4 py-2.5">Type</th>
-                    <th className="px-4 py-2.5">Role</th>
-                    <th className="px-4 py-2.5">Text / Label</th>
-                    <th className="px-4 py-2.5">Selector / Reference</th>
-                    <th className="px-4 py-2.5">State</th>
-                    <th className="px-4 py-2.5">Bounds</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ borderColor: '#1a1a28' }}>
-                  {filteredElements.map((el, i) => (
-                    <tr key={i} className="hover:bg-slate-900/40 transition-colors">
-                      <td className="px-4 py-2.5">
-                        <span className="px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/40">
-                          {el.type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-400">{el.role || '—'}</td>
-                      <td className="px-4 py-2.5 text-slate-200 max-w-xs truncate">
-                        {el.text || el.label || <span className="text-slate-600">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-400 max-w-xs truncate font-mono" title={el.reference}>
-                        {el.reference || el.tag}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${el.visible ? 'bg-emerald-400' : 'bg-slate-600'}`} />
-                        <span className={el.visible ? 'text-emerald-400' : 'text-slate-500'}>
-                          {el.visible ? 'Visible' : 'Hidden'}
-                        </span>
-                        {!el.enabled && <span className="ml-1.5 text-amber-400">(Disabled)</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-500">
-                        {el.bounding_box ? `${el.bounding_box.width}×${el.bounding_box.height}` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 5: Browser Signals */}
-      {activeTab === 'signals' && (
-        <div className="space-y-6 mb-6">
-          {/* Console Messages */}
-          <div className="rounded-lg border p-4" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
-            <h3 className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold mb-3">
-              Console Messages ({liveConsoleMessages.length})
-            </h3>
-            {liveConsoleMessages.length === 0 ? (
-              <p className="text-xs font-mono text-slate-600">No console output recorded.</p>
-            ) : (
-              <div className="space-y-1.5 max-h-[220px] overflow-y-auto font-mono text-xs">
-                {liveConsoleMessages.map((msg, i) => {
-                  const isErr = msg.level === 'error'
-                  const isWarn = msg.level === 'warn' || msg.level === 'warning'
-                  const color = isErr ? 'text-red-400 bg-red-950/30 border-red-900/40' : isWarn ? 'text-amber-400 bg-amber-950/30 border-amber-900/40' : 'text-slate-300 bg-slate-900/40 border-slate-800/40'
-                  return (
-                    <div key={i} className={`p-2 rounded border ${color} flex items-start justify-between gap-2`}>
-                      <div>
-                        <span className="font-semibold uppercase mr-2">[{msg.level}]</span>
-                        <span>{msg.text}</span>
-                      </div>
-                      {msg.location && <span className="text-slate-500 shrink-0 text-[10px]">{msg.location}</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Uncaught JS Exceptions */}
-          <div className="rounded-lg border p-4" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
-            <h3 className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold mb-3">
-              Uncaught JavaScript Exceptions ({liveJsExceptions.length})
-            </h3>
-            {liveJsExceptions.length === 0 ? (
-              <p className="text-xs font-mono text-slate-600">No uncaught JavaScript exceptions.</p>
-            ) : (
-              <div className="space-y-2 max-h-[200px] overflow-y-auto font-mono text-xs">
-                {liveJsExceptions.map((ex, i) => (
-                  <div key={i} className="p-3 rounded bg-red-950/40 border border-red-900/60">
-                    <p className="text-red-400 font-semibold">{ex.message}</p>
-                    {ex.stack && <pre className="text-[10px] text-red-300/80 mt-1 whitespace-pre-wrap">{ex.stack}</pre>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Failed Network Requests */}
-          <div className="rounded-lg border p-4" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
-            <h3 className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold mb-3">
-              Failed Network Requests ({liveFailedRequests.length})
-            </h3>
-            {liveFailedRequests.length === 0 ? (
-              <p className="text-xs font-mono text-slate-600">No failed network requests.</p>
-            ) : (
-              <div className="space-y-1.5 max-h-[200px] overflow-y-auto font-mono text-xs">
-                {liveFailedRequests.map((req, i) => (
-                  <div key={i} className="p-2.5 rounded bg-amber-950/30 border border-amber-900/40 flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold text-amber-400 mr-2">{req.method}</span>
-                      <span className="text-slate-200">{req.url}</span>
-                    </div>
-                    <span className="text-red-400 text-xs shrink-0 ml-2">{req.failure_text}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 6: State & Fingerprint */}
-      {activeTab === 'state' && (
-        <div className="rounded-lg border p-6 mb-6 space-y-4" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
-          <div>
-            <h3 className="text-xs font-mono text-slate-500 uppercase mb-1">State Fingerprint (SHA-256)</h3>
-            <div className="p-2.5 rounded bg-slate-950 border border-slate-800 font-mono text-xs text-indigo-300 break-all">
-              {liveFingerprint || '—'}
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-            <div>
-              <h4 className="text-xs font-mono text-slate-500 uppercase mb-1">Viewport Dimensions</h4>
-              <p className="text-sm font-mono text-slate-200">
-                {liveViewport ? `${liveViewport.width}px × ${liveViewport.height}px` : '1280px × 720px'}
-              </p>
-            </div>
-            <div>
-              <h4 className="text-xs font-mono text-slate-500 uppercase mb-1">Total Page Dimensions</h4>
-              <p className="text-sm font-mono text-slate-200">
-                {liveDimensions ? `${liveDimensions.width}px × ${liveDimensions.height}px` : '—'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Overview Findings Section (always visible summary below tabs) */}
-      {liveFindings.length > 0 && activeTab !== 'findings' && (
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
-              Detected Findings ({liveFindings.length})
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <span>📷</span> Latest Screenshot Snapshot
             </h2>
-            <button
-              onClick={() => setActiveTab('findings')}
-              className="text-xs font-mono text-indigo-400 hover:underline"
-            >
-              View All in Findings Tab →
-            </button>
-          </div>
-          <div className="space-y-2">
-            {liveFindings.slice(0, 5).map((f, i) => (
-              <div
-                key={f.id || i}
-                onClick={() => setSelectedFinding(f)}
-                className="rounded border px-4 py-3 cursor-pointer hover:border-slate-700 transition-colors"
-                style={{ background: '#111118', borderColor: '#1e1e2e' }}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setScreenshotTimestamp(Date.now())}
+                className="text-[10px] font-mono text-slate-400 hover:text-slate-200 transition-colors px-2 py-0.5 rounded border border-slate-700"
               >
-                <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <FindingSeverityBadge severity={f.severity} />
-                    <FindingStatusBadge status={f.status} />
-                    <span className="text-xs font-mono text-slate-400">{f.category}</span>
-                    <span className="text-xs font-mono text-slate-200 font-semibold">— {f.title}</span>
+                ↻ Refresh
+              </button>
+              <button
+                onClick={() => setFullImageModal(true)}
+                className="text-[10px] font-mono text-indigo-400 hover:text-indigo-200 transition-colors px-2 py-0.5 rounded border border-indigo-800"
+              >
+                🔍 Fullscreen
+              </button>
+            </div>
+          </div>
+
+          <div
+            className="flex-1 min-h-[220px] rounded-lg border overflow-hidden flex items-center justify-center relative group"
+            style={{ background: '#07070d', borderColor: '#1c1c2b' }}
+          >
+            <img
+              key={screenshotTimestamp}
+              src={`/api/tests/${id}/screenshot?t=${screenshotTimestamp}`}
+              alt="Test Screenshot"
+              className="max-h-[240px] w-auto max-w-full object-contain cursor-pointer transition-transform group-hover:scale-[1.01]"
+              onClick={() => setFullImageModal(true)}
+              onError={(e) => {
+                const target = e.target as HTMLImageElement
+                target.style.display = 'none'
+              }}
+            />
+          </div>
+          <div className="text-[10px] font-mono text-slate-500 text-center">
+            Updated on every deterministic state navigation
+          </div>
+        </div>
+      </div>
+
+      {/* Fullscreen Image Preview Modal */}
+      {fullImageModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+          onClick={() => setFullImageModal(false)}
+        >
+          <div className="relative max-w-6xl max-h-[90vh] overflow-hidden rounded-lg border border-slate-700">
+            <button
+              onClick={() => setFullImageModal(false)}
+              className="absolute top-3 right-3 text-white bg-black/70 hover:bg-black p-2 rounded-full font-mono text-xs cursor-pointer z-10"
+            >
+              ✕ Close
+            </button>
+            <img
+              src={`/api/tests/${id}/screenshot?t=${screenshotTimestamp}`}
+              alt="Full Resolution Screenshot"
+              className="max-h-[85vh] w-auto object-contain bg-black"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* 3. ACTION / EVENT TIMELINE                                          */}
+      {/* ------------------------------------------------------------------- */}
+      <div
+        className="rounded-xl border p-5 shadow-xl space-y-4"
+        style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <span>⚡</span> Action & Event Timeline
+            </h2>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+              {filteredTimeline.length} events
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Filter pills */}
+            <div className="flex items-center gap-1">
+              {(['all', 'actions', 'observations', 'findings'] as const).map((flt) => (
+                <button
+                  key={flt}
+                  onClick={() => setTimelineFilter(flt)}
+                  className="px-2 py-0.5 rounded text-[10px] font-mono capitalize transition-colors cursor-pointer"
+                  style={{
+                    background: timelineFilter === flt ? '#6366f125' : '#11111d',
+                    color: timelineFilter === flt ? '#a5b4fc' : '#94a3b8',
+                    border: `1px solid ${timelineFilter === flt ? '#6366f1' : '#1e1e2e'}`,
+                  }}
+                >
+                  {flt}
+                </button>
+              ))}
+            </div>
+
+            <label className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoScroll}
+                onChange={(e) => setAutoScroll(e.target.checked)}
+                className="rounded accent-indigo-500"
+              />
+              Auto-scroll
+            </label>
+          </div>
+        </div>
+
+        {/* Timeline Log Window */}
+        <div
+          className="h-64 overflow-y-auto p-4 rounded-lg border font-mono text-xs space-y-1.5"
+          style={{ background: '#07070d', borderColor: '#1c1c2b' }}
+        >
+          {filteredTimeline.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-slate-600 text-xs">
+              Awaiting actions and telemetry events...
+            </div>
+          ) : (
+            filteredTimeline.map((ev) => (
+              <div key={ev.id} className="flex items-start gap-2.5 py-0.5">
+                <span className="text-slate-600 text-[11px] shrink-0">[{ev.time}]</span>
+                <span className="font-semibold shrink-0" style={{ color: ev.color || '#94a3b8' }}>
+                  {ev.label}
+                </span>
+                {ev.detail && <span className="text-slate-400 truncate">{ev.detail}</span>}
+              </div>
+            ))
+          )}
+          <div ref={timelineEndRef} />
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* 4. FINDINGS INTERFACE                                               */}
+      {/* ------------------------------------------------------------------- */}
+      <div
+        className="rounded-xl border p-5 shadow-xl space-y-5"
+        style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <span>🛡️</span> Discovered Findings ({findings.length})
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search findings..."
+              value={findingSearch}
+              onChange={(e) => setFindingSearch(e.target.value)}
+              className="px-3 py-1 rounded-lg text-xs font-mono text-slate-200 placeholder-slate-600 border outline-none"
+              style={{ background: '#080811', borderColor: '#1c1c2b' }}
+            />
+
+            {/* Severity Filter */}
+            <select
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value)}
+              className="px-2.5 py-1 rounded text-xs font-mono text-slate-300 border outline-none capitalize"
+              style={{ background: '#080811', borderColor: '#1c1c2b' }}
+            >
+              <option value="all">All Severities</option>
+              {['critical', 'high', 'medium', 'low', 'info'].map((sev) => (
+                <option key={sev} value={sev}>{sev}</option>
+              ))}
+            </select>
+
+            {/* Category Filter */}
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="px-2.5 py-1 rounded text-xs font-mono text-slate-300 border outline-none capitalize"
+              style={{ background: '#080811', borderColor: '#1c1c2b' }}
+            >
+              <option value="all">All Categories</option>
+              {['functional', 'network', 'javascript', 'crash', 'performance', 'ui', 'ux', 'security', 'accessibility'].map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-2.5 py-1 rounded text-xs font-mono text-slate-300 border outline-none capitalize"
+              style={{ background: '#080811', borderColor: '#1c1c2b' }}
+            >
+              <option value="all">All Statuses</option>
+              {['potential', 'investigating', 'confirmed', 'unconfirmed', 'dismissed'].map((st) => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Findings List */}
+        {filteredFindings.length === 0 ? (
+          <div
+            className="p-12 rounded-lg border text-center"
+            style={{ background: '#080811', borderColor: '#1c1c2b' }}
+          >
+            <div className="text-2xl mb-2">🎉</div>
+            <p className="text-sm font-mono text-slate-300 font-semibold">
+              {findings.length === 0 ? 'No Findings Detected Yet' : 'No findings match current filter criteria'}
+            </p>
+            <p className="text-xs font-mono text-slate-500 mt-1">
+              PROBE evaluates network errors, JavaScript exceptions, and broken UI states deterministically.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredFindings.map((f) => (
+              <div
+                key={f.id}
+                onClick={() => setSelectedFinding(f)}
+                className="p-4 rounded-lg border hover:border-indigo-500/60 transition-all cursor-pointer space-y-3 group shadow-md"
+                style={{ background: '#090912', borderColor: '#1c1c2b' }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <FindingSeverityBadge severity={String(f.severity)} />
+                    <FindingStatusBadge status={String(f.status)} />
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800/80 text-slate-400 uppercase">
+                      {f.category}
+                    </span>
                   </div>
-                  <span className="text-[10px] font-mono text-indigo-400">Click to inspect ↗</span>
+                  {f.ai_analysis && (
+                    <span className="text-[10px] font-mono text-indigo-400 font-semibold flex items-center gap-1">
+                      ✨ AI Analyzed
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-slate-300 font-sans line-clamp-1">{f.description}</p>
+
+                <div>
+                  <h3 className="text-xs font-mono font-bold text-slate-100 group-hover:text-indigo-300 transition-colors line-clamp-2">
+                    {f.title}
+                  </h3>
+                  <p className="text-[11px] font-mono text-slate-400 line-clamp-2 mt-1">
+                    {f.description}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/60 text-[10px] font-mono text-slate-500">
+                  <span>Confidence: {Math.round((f.confidence ?? 0.8) * 100)}%</span>
+                  <span className="text-indigo-400 group-hover:underline">Inspect Details →</span>
+                </div>
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* 5. AI EXECUTIVE TEST SUMMARY (If available)                         */}
+      {/* ------------------------------------------------------------------- */}
+      {aiSummary && (
+        <div
+          className="rounded-xl border p-5 shadow-xl space-y-4"
+          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
+        >
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <span>✨</span> Gemini Executive Test Run Summary
+            </h2>
+            <span
+              className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
+              style={{
+                color: aiSummary.overall_health === 'healthy' ? '#22c55e' : aiSummary.overall_health === 'degraded' ? '#f59e0b' : '#ef4444',
+                background: `${aiSummary.overall_health === 'healthy' ? '#22c55e' : aiSummary.overall_health === 'degraded' ? '#f59e0b' : '#ef4444'}18`,
+                border: `1px solid ${aiSummary.overall_health === 'healthy' ? '#22c55e' : aiSummary.overall_health === 'degraded' ? '#f59e0b' : '#ef4444'}35`,
+              }}
+            >
+              {aiSummary.overall_health?.replace('_', ' ')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+              <div className="text-xs font-mono font-bold text-slate-400 uppercase mb-2">Key Takeaways</div>
+              <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
+                {aiSummary.key_takeaways?.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="p-4 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+              <div className="text-xs font-mono font-bold text-red-400 uppercase mb-2">Top Identified Risks</div>
+              <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
+                {aiSummary.top_risks?.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="p-4 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
+              <div className="text-xs font-mono font-bold text-emerald-400 uppercase mb-2">Recommended Actions</div>
+              <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
+                {aiSummary.recommended_actions?.map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Interactive Modal Drawer */}
-      {selectedFinding && test && (
+      {/* Finding Detail Modal */}
+      {selectedFinding && id && (
         <FindingDetailModal
           finding={selectedFinding}
-          testId={test.id}
+          testId={id}
           onClose={() => setSelectedFinding(null)}
           onFindingUpdated={(updated) => {
             setSelectedFinding(updated)
-            setLiveFindings((prev) =>
-              prev.map((f) => (f.id === updated.id ? updated : f))
-            )
+            setFindings((prev) => prev.map((f) => (f.id === updated.id ? updated : f)))
           }}
         />
       )}
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div>
-      <p className="text-xs font-mono text-slate-500 mb-1">{label}</p>
-      <p className="text-sm font-mono font-semibold text-slate-200">{value}</p>
     </div>
   )
 }

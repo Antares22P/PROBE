@@ -193,6 +193,9 @@ export interface Test {
   status_code?: number | null
   screenshot_url?: string | null
   ai_summary?: TestSummaryAnalysis | Record<string, any> | null
+  actions_count?: number
+  states_count?: number
+  findings_count?: number
   actions?: ActionItem[]
   observations?: Observation[]
   findings?: Finding[]

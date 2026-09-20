@@ -17,10 +17,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ status: string; service: string }>('/health'),
 
-  createTest: (url: string, platform = 'web') =>
+  createTest: (url: string, platform = 'web', config?: Record<string, any>) =>
     request<Test>('/tests', {
       method: 'POST',
-      body: JSON.stringify({ url, platform }),
+      body: JSON.stringify({ url, platform, config }),
     }),
 
   listTests: () => request<Test[]>('/tests'),

@@ -3,9 +3,18 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SSEEvent } from '../types'
 
-export function useTestEvents(testId: string | null) {
+export interface UseTestEventsOptions {
+  onEvent?: (event: SSEEvent) => void
+}
+
+export function useTestEvents(testId: string | null, options?: UseTestEventsOptions) {
   const [events, setEvents] = useState<SSEEvent[]>([])
   const esRef = useRef<EventSource | null>(null)
+  const onEventRef = useRef(options?.onEvent)
+
+  useEffect(() => {
+    onEventRef.current = options?.onEvent
+  }, [options?.onEvent])
 
   useEffect(() => {
     if (!testId) return
@@ -17,6 +26,9 @@ export function useTestEvents(testId: string | null) {
       try {
         const event: SSEEvent = JSON.parse(e.data)
         setEvents((prev) => [...prev, event])
+        if (onEventRef.current) {
+          onEventRef.current(event)
+        }
       } catch {
         // ignore parse errors
       }
