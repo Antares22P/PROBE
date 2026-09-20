@@ -17,8 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.models import PlatformType, TestConfig, TestSession
 from app.core.orchestrator.orchestrator import Orchestrator
 from app.drivers.web.playwright.driver import WebTestDriver
+from app.findings.models import Finding, FindingCategory, FindingSeverity, FindingStatus
+from app.reproduction.engine import ReproductionEngine
+from app.reproduction.models import ReproductionStatus
 from app.storage.database import get_db
-from app.storage.db_models import FindingModel, ObservationModel, TestModel
+from app.storage.db_models import FindingModel, ObservationModel, ReproductionModel, TestModel
 from app.storage.repository import TestRepository
 from app.utils.logging import get_logger
 
@@ -71,6 +74,28 @@ class FindingResponse(BaseModel):
     recommendation: Optional[str] = None
     fingerprint: Optional[str] = None
     timestamp: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReproductionRequest(BaseModel):
+    attempts: int = 1
+    action_sequence: Optional[list[str]] = None
+
+
+class ReproductionResponse(BaseModel):
+    id: str
+    test_id: str
+    finding_id: str
+    status: str
+    attempts: int = 1
+    successful_attempts: int = 0
+    steps: list[str] = []
+    fresh_evidence: list[dict[str, Any]] = []
+    error_message: Optional[str] = None
+    success: Optional[bool] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -349,6 +374,130 @@ async def cancel_test(
         return {"status": "cancelled", "test_id": test_id}
 
     return {"status": test.status, "test_id": test_id}
+
+
+@router.post("/tests/{test_id}/findings/{finding_id}/reproduce", response_model=ReproductionResponse)
+async def reproduce_finding(
+    test_id: str,
+    finding_id: str,
+    body: Optional[ReproductionRequest] = None,
+    db: AsyncSession = Depends(get_db),
+) -> ReproductionResponse:
+    """Attempt deterministic reproduction of a finding."""
+    repo = TestRepository(db)
+    test = await repo.get(test_id)
+    if not test:
+        raise HTTPException(status_code=404, detail=f"Test {test_id} not found")
+
+    findings = await repo.get_findings(test_id)
+    finding_model = next((f for f in findings if f.id == finding_id), None)
+    if not finding_model:
+        raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
+
+    finding = Finding(
+        id=finding_model.id,
+        test_id=test_id,
+        title=finding_model.title,
+        category=FindingCategory(finding_model.category) if finding_model.category in [c.value for c in FindingCategory] else FindingCategory.OTHER,
+        severity=FindingSeverity(finding_model.severity) if finding_model.severity in [s.value for s in FindingSeverity] else FindingSeverity.MEDIUM,
+        status=FindingStatus(finding_model.status) if finding_model.status in [st.value for st in FindingStatus] else FindingStatus.POTENTIAL,
+        confidence=finding_model.confidence,
+        description=finding_model.description,
+        evidence=finding_model.evidence or [],
+        reproduction=finding_model.reproduction,
+        recommendation=finding_model.recommendation,
+        fingerprint=finding_model.fingerprint,
+        timestamp=finding_model.timestamp,
+    )
+
+    req = body or ReproductionRequest()
+    session = TestSession(
+        id=test.id,
+        url=test.url,
+        platform=PlatformType(test.platform),
+        config=TestConfig(**(test.config or {})),
+    )
+
+    driver = WebTestDriver(session=session, config=session.config)
+    try:
+        await driver.initialize()
+        engine = ReproductionEngine(driver=driver, session=session, repository=repo)
+        result = await engine.reproduce(
+            finding=finding,
+            attempts=req.attempts,
+            action_sequence=req.action_sequence,
+        )
+        await db.commit()
+
+        # Broadcast finding update and reproduction result
+        await _broadcast(test_id, {
+            "type": "finding_reproduced",
+            "finding_id": finding.id,
+            "status": finding.status.value,
+            "reproduction_status": result.status.value,
+            "successful_attempts": result.successful_attempts,
+            "attempts": result.attempts,
+        })
+
+        return ReproductionResponse(
+            id=result.id,
+            test_id=result.test_id,
+            finding_id=result.finding_id,
+            status=result.status.value,
+            attempts=result.attempts,
+            successful_attempts=result.successful_attempts,
+            steps=result.action_sequence,
+            fresh_evidence=result.fresh_evidence,
+            error_message=result.error_message,
+            success=(result.status == ReproductionStatus.REPRODUCED),
+            created_at=result.started_at,
+            completed_at=result.completed_at,
+        )
+    finally:
+        await driver.close()
+
+
+@router.get("/tests/{test_id}/findings/{finding_id}/reproductions", response_model=list[ReproductionResponse])
+async def list_reproductions(
+    test_id: str,
+    finding_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[ReproductionResponse]:
+    """List reproduction attempts for a finding."""
+    repo = TestRepository(db)
+    reps = await repo.get_reproductions_for_finding(finding_id)
+    return [
+        ReproductionResponse(
+            id=r.id,
+            test_id=r.test_id,
+            finding_id=r.finding_id,
+            status=r.status,
+            attempts=r.attempts,
+            successful_attempts=r.successful_attempts,
+            steps=r.steps or [],
+            fresh_evidence=r.fresh_evidence or [],
+            error_message=r.error_message,
+            success=r.success,
+            created_at=r.created_at,
+            completed_at=r.completed_at,
+        )
+        for r in reps
+    ]
+
+
+@router.get("/tests/{test_id}/findings/{finding_id}", response_model=FindingResponse)
+async def get_finding(
+    test_id: str,
+    finding_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FindingResponse:
+    """Get detailed finding by ID."""
+    repo = TestRepository(db)
+    findings = await repo.get_findings(test_id)
+    f = next((item for item in findings if item.id == finding_id), None)
+    if not f:
+        raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
+    return FindingResponse.model_validate(f)
 
 
 @router.get("/tests/{test_id}/events")

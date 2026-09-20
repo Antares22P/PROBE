@@ -11,6 +11,7 @@ import type {
   FailedRequest,
   ActionItem,
   Finding,
+  ReproductionResult,
 } from '../types'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -211,17 +212,105 @@ function EventRow({ event }: { event: SSEEvent }) {
   return null
 }
 
+const REPRO_STATUS_COLORS: Record<string, string> = {
+  not_attempted: '#6b7280',
+  reproducing: '#6366f1',
+  reproduced: '#ef4444',
+  not_reproduced: '#22c55e',
+  intermittent: '#f59e0b',
+  failed: '#dc2626',
+}
+
+function ReproductionStatusBadge({ status }: { status?: string }) {
+  const s = status || 'not_attempted'
+  const color = REPRO_STATUS_COLORS[s] ?? '#6b7280'
+  return (
+    <span
+      className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
+      style={{
+        color,
+        backgroundColor: `${color}18`,
+        border: `1px solid ${color}40`,
+      }}
+    >
+      {s.replace('_', ' ')}
+    </span>
+  )
+}
+
 function FindingDetailModal({
   finding,
+  testId,
   onClose,
+  onFindingUpdated,
 }: {
   finding: Finding
+  testId: string
   onClose: () => void
+  onFindingUpdated: (updatedFinding: Finding) => void
 }) {
+  const [reproducing, setReproducing] = useState(false)
+  const [reproAttempts, setReproAttempts] = useState<number>(1)
+  const [latestReproduction, setLatestReproduction] = useState<ReproductionResult | null>(null)
+  const [reproHistory, setReproHistory] = useState<ReproductionResult[]>([])
+  const [reproError, setReproError] = useState<string | null>(null)
+
+  // Load prior reproductions on mount
+  useEffect(() => {
+    api.getReproductions(testId, finding.id)
+      .then((reps) => {
+        setReproHistory(reps)
+        if (reps.length > 0) setLatestReproduction(reps[0])
+      })
+      .catch(() => {})
+  }, [testId, finding.id])
+
+  // Extract structured action sequence
+  const actionSequence: string[] = (() => {
+    if (finding.reproduction && Array.isArray(finding.reproduction.action_sequence)) {
+      return finding.reproduction.action_sequence
+    }
+    if (finding.reproduction && Array.isArray(finding.reproduction.steps)) {
+      return finding.reproduction.steps
+    }
+    return []
+  })()
+
+  const handleRunReproduction = async () => {
+    setReproducing(true)
+    setReproError(null)
+    try {
+      const res = await api.reproduceFinding(testId, finding.id, reproAttempts)
+      setLatestReproduction(res)
+      setReproHistory((prev) => [res, ...prev])
+
+      // Determine updated status
+      let newStatus = finding.status
+      if (res.status === 'reproduced') {
+        newStatus = 'confirmed'
+      } else if (res.status === 'not_reproduced') {
+        newStatus = 'unconfirmed'
+      } else if (res.status === 'intermittent') {
+        newStatus = 'investigating'
+      }
+
+      const updated = {
+        ...finding,
+        status: newStatus,
+        reproductions: [res, ...(finding.reproductions || [])],
+      }
+      onFindingUpdated(updated)
+    } catch (err: any) {
+      setReproError(err.message || 'Reproduction failed to execute')
+    } finally {
+      setReproducing(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
       <div
-        className="w-full max-w-3xl rounded-xl border p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto font-mono"
+        className="w-full max-w-3xl rounded-xl border p-6 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto font-mono"
         style={{ background: '#111118', borderColor: '#2d2d3f' }}
       >
         {/* Header */}
@@ -247,6 +336,112 @@ function FindingDetailModal({
           >
             ✕
           </button>
+        </div>
+
+        {/* Deterministic Reproduction Section */}
+        <div className="p-4 rounded-lg bg-indigo-950/20 border border-indigo-900/40 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-xs uppercase text-indigo-300 font-bold flex items-center gap-1.5">
+                <span>🔄 Deterministic Issue Reproduction</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 font-sans mt-0.5">
+                Replays the exact structured action sequence in an isolated context to verify if the issue recurs.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={reproAttempts}
+                onChange={(e) => setReproAttempts(Number(e.target.value))}
+                disabled={reproducing}
+                className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1"
+              >
+                <option value={1}>1 Attempt (Quick)</option>
+                <option value={3}>3 Attempts (Intermittency)</option>
+              </select>
+              <button
+                onClick={handleRunReproduction}
+                disabled={reproducing}
+                className="px-3.5 py-1.5 rounded text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {reproducing ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                    <span>Replaying Actions...</span>
+                  </>
+                ) : (
+                  <span>▶ Run Reproduction</span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {reproError && (
+            <div className="p-2.5 rounded bg-red-950/50 border border-red-900 text-red-300 text-xs">
+              {reproError}
+            </div>
+          )}
+
+          {/* Latest Reproduction Result */}
+          {latestReproduction && (
+            <div className="p-3 rounded bg-slate-950 border border-slate-800/90 space-y-2">
+              <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Reproduction Result:</span>
+                  <ReproductionStatusBadge status={latestReproduction.status} />
+                  <span className="text-slate-500 text-[11px]">
+                    ({latestReproduction.successful_attempts}/{latestReproduction.attempts} attempts reproduced)
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  {new Date(latestReproduction.created_at).toLocaleTimeString()}
+                </span>
+              </div>
+
+              {latestReproduction.error_message && (
+                <p className="text-xs text-red-400 font-sans">{latestReproduction.error_message}</p>
+              )}
+
+              {latestReproduction.fresh_evidence && latestReproduction.fresh_evidence.length > 0 && (
+                <div className="pt-2 border-t border-slate-800/60">
+                  <span className="text-[10px] text-emerald-400 uppercase font-semibold block mb-1">
+                    Fresh Telemetry Captured During Replay ({latestReproduction.fresh_evidence.length} items)
+                  </span>
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {latestReproduction.fresh_evidence.map((ev: Record<string, any>, idx: number) => (
+                      <div key={idx} className="text-[11px] text-slate-300 p-1.5 rounded bg-slate-900/60 flex items-center justify-between">
+                        <span>{ev.type || 'Signal'}: {ev.message || ev.error || ev.url || `Status ${ev.status_code}`}</span>
+                        <span className="text-emerald-400 text-[10px] font-bold">MATCHED</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Action Sequence Section */}
+        <div>
+          <h3 className="text-xs uppercase text-slate-400 font-semibold mb-2">
+            Structured Action Replay Sequence ({actionSequence.length || 1} steps)
+          </h3>
+          {actionSequence.length === 0 ? (
+            <div className="p-2.5 rounded bg-slate-950 border border-slate-800 text-xs text-slate-400">
+              <code>NAVIGATE("{finding.evidence?.[0]?.url || 'TARGET_URL'}")</code>
+            </div>
+          ) : (
+            <div className="space-y-1.5 p-3 rounded bg-slate-950 border border-slate-800 max-h-36 overflow-y-auto">
+              {actionSequence.map((step, idx) => (
+                <div key={idx} className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-600 text-[10px] w-5 text-right">{idx + 1}.</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-indigo-300 font-mono text-[11px]">
+                    {step}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Description */}
@@ -279,20 +474,10 @@ function FindingDetailModal({
           </div>
         )}
 
-        {/* Reproduction Context */}
-        {finding.reproduction && Object.keys(finding.reproduction).length > 0 && (
-          <div>
-            <h3 className="text-xs uppercase text-slate-500 font-semibold mb-1">Reproduction Context</h3>
-            <pre className="text-[11px] text-slate-300 bg-slate-950 p-3 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap">
-              {JSON.stringify(finding.reproduction, null, 2)}
-            </pre>
-          </div>
-        )}
-
-        {/* Evidence List */}
+        {/* Evidence Timeline */}
         <div>
           <h3 className="text-xs uppercase text-slate-400 font-semibold mb-2">
-            Captured Evidence ({finding.evidence?.length || 0} occurrence{finding.evidence?.length !== 1 ? 's' : ''})
+            Evidence Timeline ({finding.evidence?.length || 0} occurrence{finding.evidence?.length !== 1 ? 's' : ''})
           </h3>
           {(!finding.evidence || finding.evidence.length === 0) ? (
             <p className="text-xs text-slate-600">No raw evidence items attached.</p>
@@ -506,6 +691,18 @@ export function Test() {
         }
         return [...prev, incomingFinding]
       })
+    } else if (last.type === 'finding_reproduced' && last.finding_id) {
+      setLiveFindings((prev) =>
+        prev.map((f) => {
+          if (f.id === last.finding_id) {
+            return {
+              ...f,
+              status: last.status || f.status,
+            }
+          }
+          return f
+        })
+      )
     } else if (last.type === 'screenshot' && last.url) {
       setLiveScreenshotUrl(`${last.url}?t=${Date.now()}`)
     } else if (last.type === 'status') {
@@ -1160,10 +1357,17 @@ export function Test() {
       )}
 
       {/* Interactive Modal Drawer */}
-      {selectedFinding && (
+      {selectedFinding && test && (
         <FindingDetailModal
           finding={selectedFinding}
+          testId={test.id}
           onClose={() => setSelectedFinding(null)}
+          onFindingUpdated={(updated) => {
+            setSelectedFinding(updated)
+            setLiveFindings((prev) =>
+              prev.map((f) => (f.id === updated.id ? updated : f))
+            )
+          }}
         />
       )}
     </div>

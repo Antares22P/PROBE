@@ -12,9 +12,10 @@ from app.core.models import ApplicationState, TestSession, TestStatus
 from app.decisions.decision_maker import DecisionMaker
 from app.detection.detector import Detector
 from app.drivers.common.base import TestDriver
+from app.evidence.models import format_action_signature
 from app.exploration.engine import ExplorationEngine
 from app.findings.models import Finding
-from app.reproduction.reproducer import Reproducer
+from app.reproduction.engine import ReproductionEngine
 from app.storage.db_models import ActionModel, EvidenceModel, FindingModel, ObservationModel
 from app.storage.repository import TestRepository
 from app.utils.errors import DriverError, InternalError
@@ -133,7 +134,15 @@ class Orchestrator:
                     )
                     await self._repo.add_evidence(ev)
 
-                findings = detector.detect(state)
+                # Build replayable action sequence for findings detected in this exploration
+                action_sigs = [format_action_signature(r.action) for r in action_results]
+                action_ctx = {
+                    "action_sequence": action_sigs,
+                    "target_url": self._session.url,
+                    "steps_count": len(action_sigs),
+                }
+
+                findings = detector.detect(state, action_context=action_ctx)
                 all_findings.extend(findings)
 
                 for finding in findings:

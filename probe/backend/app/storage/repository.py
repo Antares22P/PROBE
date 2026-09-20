@@ -163,6 +163,53 @@ class TestRepository:
         except Exception as exc:
             raise DatabaseError(f"Failed to update finding: {exc}") from exc
 
+    async def add_reproduction(self, rep: ReproductionModel) -> ReproductionModel:
+        try:
+            self._db.add(rep)
+            await self._db.flush()
+            return rep
+        except Exception as exc:
+            raise DatabaseError(f"Failed to add reproduction: {exc}") from exc
+
+    async def get_reproduction(self, reproduction_id: str) -> Optional[ReproductionModel]:
+        try:
+            result = await self._db.execute(
+                select(ReproductionModel).where(ReproductionModel.id == reproduction_id)
+            )
+            return result.scalar_one_or_none()
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get reproduction {reproduction_id}: {exc}") from exc
+
+    async def get_reproductions_for_finding(self, finding_id: str) -> list[ReproductionModel]:
+        try:
+            result = await self._db.execute(
+                select(ReproductionModel)
+                .where(ReproductionModel.finding_id == finding_id)
+                .order_by(ReproductionModel.timestamp.desc())
+            )
+            return list(result.scalars().all())
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get reproductions for finding {finding_id}: {exc}") from exc
+
+    async def get_latest_reproduction(self, finding_id: str) -> Optional[ReproductionModel]:
+        try:
+            result = await self._db.execute(
+                select(ReproductionModel)
+                .where(ReproductionModel.finding_id == finding_id)
+                .order_by(ReproductionModel.timestamp.desc())
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get latest reproduction for finding {finding_id}: {exc}") from exc
+
+    async def update_reproduction(self, rep: ReproductionModel) -> ReproductionModel:
+        try:
+            await self._db.flush()
+            return rep
+        except Exception as exc:
+            raise DatabaseError(f"Failed to update reproduction: {exc}") from exc
+
     async def get_observations(self, test_id: str) -> list[ObservationModel]:
         try:
             result = await self._db.execute(

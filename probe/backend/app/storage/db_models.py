@@ -151,9 +151,16 @@ class ReproductionModel(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     test_id: Mapped[str] = mapped_column(ForeignKey("tests.id"), nullable=False)
-    finding_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    success: Mapped[bool | None] = mapped_column(nullable=True)
+    finding_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="not_attempted")
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    successful_attempts: Mapped[int] = mapped_column(Integer, default=0)
     steps: Mapped[list] = mapped_column(JSON, default=list)
+    fresh_evidence: Mapped[list] = mapped_column(JSON, default=list)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    success: Mapped[bool | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     test: Mapped[TestModel] = relationship("TestModel", back_populates="reproductions")

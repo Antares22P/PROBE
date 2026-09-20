@@ -102,6 +102,29 @@ export type FindingStatus =
   | 'unconfirmed'
   | 'dismissed'
 
+export type ReproductionStatus =
+  | 'not_attempted'
+  | 'reproducing'
+  | 'reproduced'
+  | 'not_reproduced'
+  | 'intermittent'
+  | 'failed'
+
+export interface ReproductionResult {
+  id: string
+  test_id: string
+  finding_id: string
+  status: ReproductionStatus | string
+  attempts: number
+  successful_attempts: number
+  steps: string[]
+  fresh_evidence: Array<Record<string, any>>
+  error_message?: string | null
+  success?: boolean | null
+  created_at: string
+  completed_at?: string | null
+}
+
 export interface Finding {
   id: string
   severity: FindingSeverity | string
@@ -114,6 +137,7 @@ export interface Finding {
   reproduction?: Record<string, any> | null
   recommendation?: string | null
   fingerprint?: string | null
+  reproductions?: ReproductionResult[]
   timestamp: string
 }
 
@@ -143,6 +167,7 @@ export interface SSEEvent {
     | 'status'
     | 'observation'
     | 'finding'
+    | 'finding_reproduced'
     | 'screenshot'
     | 'action_start'
     | 'action_completed'
@@ -181,6 +206,10 @@ export interface SSEEvent {
   evidence?: Array<Record<string, any>>
   reproduction?: Record<string, any> | null
   recommendation?: string | null
+  reproduction_status?: string
+  successful_attempts?: number
+  attempts?: number
+  finding_id?: string
   actions_count?: number
   states_count?: number
   findings_count?: number

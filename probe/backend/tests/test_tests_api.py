@@ -15,20 +15,34 @@ from app.storage import db_models  # noqa: F401 - registers ORM models
 # Test database setup
 # ---------------------------------------------------------------------------
 
+from sqlalchemy.pool import StaticPool
+
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
-test_engine = create_async_engine(TEST_DB_URL, echo=False)
+test_engine = create_async_engine(
+    TEST_DB_URL,
+    echo=False,
+    poolclass=StaticPool,
+    connect_args={"check_same_thread": False},
+)
 TestSessionLocal = async_sessionmaker(
     bind=test_engine, class_=AsyncSession, expire_on_commit=False
 )
 
 
-@pytest.fixture(autouse=True)
+import pytest_asyncio
+
+
+@pytest_asyncio.fixture(autouse=True)
 async def setup_test_db():
-    """Create all tables before each test, drop after."""
+    """Create all tables before each test, drop after, and set dependency overrides."""
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    app.dependency_overrides[get_db] = override_get_db
     yield
+    app.dependency_overrides.clear()
+
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
@@ -42,10 +56,6 @@ async def override_get_db():
         except Exception:
             await session.rollback()
             raise
-
-
-# Override FastAPI's database dependency for all tests
-app.dependency_overrides[get_db] = override_get_db
 
 
 # ---------------------------------------------------------------------------

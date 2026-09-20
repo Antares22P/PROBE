@@ -1,6 +1,4 @@
-// API client — communicates with FastAPI backend
-
-import type { Test } from '../types'
+import type { Finding, ReproductionResult, Test } from '../types'
 
 const BASE = '/api'
 
@@ -38,4 +36,21 @@ export const api = {
     request<{ status: string; test_id: string }>(`/tests/${id}/cancel`, {
       method: 'POST',
     }),
+
+  reproduceFinding: (
+    testId: string,
+    findingId: string,
+    attempts = 1,
+    actionSequence?: string[]
+  ) =>
+    request<ReproductionResult>(`/tests/${testId}/findings/${findingId}/reproduce`, {
+      method: 'POST',
+      body: JSON.stringify({ attempts, action_sequence: actionSequence }),
+    }),
+
+  getReproductions: (testId: string, findingId: string) =>
+    request<ReproductionResult[]>(`/tests/${testId}/findings/${findingId}/reproductions`),
+
+  getFinding: (testId: string, findingId: string) =>
+    request<Finding>(`/tests/${testId}/findings/${findingId}`),
 }
