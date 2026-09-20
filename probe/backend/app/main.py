@@ -17,11 +17,11 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown."""
-    logger.info("startup", component="main", event="probe_starting")
+    logger.info("probe_starting", component="main")
     await init_db()
-    logger.info("startup", component="main", event="database_initialized")
+    logger.info("database_initialized", component="main")
     yield
-    logger.info("shutdown", component="main", event="probe_stopping")
+    logger.info("probe_stopping", component="main")
 
 
 app = FastAPI(

@@ -1,12 +1,5 @@
 """
 Tests API — CRUD + start/cancel endpoints.
-
-POST   /api/tests          — create a test
-GET    /api/tests          — list all tests
-GET    /api/tests/{id}     — get test by id
-POST   /api/tests/{id}/start   — start a test (runs orchestrator in background)
-POST   /api/tests/{id}/cancel  — cancel a running test
-GET    /api/tests/{id}/events  — SSE event stream for a test
 """
 from __future__ import annotations
 
@@ -17,7 +10,7 @@ from typing import Any, AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import PlatformType, TestConfig, TestSession
@@ -26,7 +19,6 @@ from app.drivers.web.playwright.driver import WebTestDriver
 from app.storage.database import get_db
 from app.storage.db_models import TestModel
 from app.storage.repository import TestRepository
-from app.utils.errors import ApiError, ValidationError
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -111,7 +103,7 @@ async def create_test(
 
     repo = TestRepository(db)
     test = await repo.create(test)
-    logger.info("test_created_api", component="api", event="create_test", test_id=test.id)
+    logger.info("create_test", component="api", test_id=test.id)
     return _to_response(test)
 
 
@@ -185,19 +177,14 @@ async def start_test(
                 await run_db.commit()
             except Exception as exc:
                 await run_db.rollback()
-                logger.error(
-                    "run_task_error",
-                    component="api",
-                    test_id=test_id,
-                    error=str(exc),
-                )
+                logger.error("run_task_error", component="api", test_id=test_id, error=str(exc))
             finally:
                 await _close_queues(test_id)
 
     task = asyncio.create_task(_run_with_db())
     _running_tasks[test_id] = task
 
-    logger.info("test_started", component="api", event="start_test", test_id=test_id)
+    logger.info("start_test", component="api", test_id=test_id)
     return {"status": "started", "test_id": test_id}
 
 
@@ -218,7 +205,7 @@ async def cancel_test(
         await repo.update_status(test_id, "cancelled")
         await _broadcast(test_id, {"type": "status", "status": "cancelled", "message": "Cancelled by user"})
         await _close_queues(test_id)
-        logger.info("test_cancelled", component="api", event="cancel_test", test_id=test_id)
+        logger.info("cancel_test", component="api", test_id=test_id)
         return {"status": "cancelled", "test_id": test_id}
 
     return {"status": test.status, "test_id": test_id}
@@ -268,13 +255,11 @@ async def test_events(test_id: str, request: Request) -> StreamingResponse:
 
 
 async def _broadcast(test_id: str, event: dict) -> None:
-    """Send an event to all SSE clients listening for this test."""
     for q in _sse_queues.get(test_id, []):
         await q.put(event)
 
 
 async def _close_queues(test_id: str) -> None:
-    """Send sentinel to all SSE clients so they close cleanly."""
     for q in _sse_queues.get(test_id, []):
         await q.put(None)
     _sse_queues.pop(test_id, None)

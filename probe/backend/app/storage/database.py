@@ -51,7 +51,7 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    logger.info("db_ready", component="database", event="tables_created", path=DB_PATH)
+    logger.info("db_ready", component="database", path=DB_PATH)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

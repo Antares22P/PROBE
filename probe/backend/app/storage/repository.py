@@ -36,12 +36,7 @@ class TestRepository:
             self._db.add(test)
             await self._db.flush()
             await self._db.refresh(test)
-            logger.info(
-                "test_created",
-                component="repository",
-                event="test_created",
-                test_id=test.id,
-            )
+            logger.info("test_created", component="repository", test_id=test.id)
             return test
         except Exception as exc:
             raise DatabaseError(f"Failed to create test: {exc}") from exc

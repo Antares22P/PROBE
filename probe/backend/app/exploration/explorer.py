@@ -1,8 +1,5 @@
 """
 Explorer — autonomous page exploration logic.
-
-Explores a web application by navigating links and interacting
-with interactive elements, collecting observations along the way.
 """
 from __future__ import annotations
 
@@ -32,14 +29,10 @@ class Explorer:
         self._visited_urls: set[str] = set()
 
     async def explore_page(self, url: str) -> list[ApplicationState]:
-        """
-        Navigate to a URL and collect the initial application state.
-        Returns a list of observed states.
-        """
+        """Navigate to a URL and collect the initial application state."""
         logger.info(
-            "exploring_page",
+            "explore_navigate",
             component="explorer",
-            event="navigate",
             test_id=self._session.id,
             url=url,
         )
@@ -51,13 +44,11 @@ class Explorer:
         states.append(state)
         self._visited_urls.add(state.url)
 
-        # Capture a screenshot as evidence
         await self._driver.capture_screenshot()
 
         logger.info(
-            "page_explored",
+            "page_captured",
             component="explorer",
-            event="page_captured",
             test_id=self._session.id,
             url=state.url,
             element_count=len(state.elements),

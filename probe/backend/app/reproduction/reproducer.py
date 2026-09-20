@@ -19,15 +19,10 @@ class Reproducer:
         self._session = session
 
     async def reproduce(self, finding: Finding, steps: list[Action]) -> bool:
-        """
-        Attempt to reproduce a finding by executing the given steps.
-
-        Returns True if the finding was reproduced, False otherwise.
-        """
+        """Attempt to reproduce a finding by executing the given steps."""
         logger.info(
             "reproducing_finding",
             component="reproducer",
-            event="start",
             test_id=self._session.id,
             finding_id=finding.id,
         )
@@ -38,7 +33,6 @@ class Reproducer:
 
             state = await self._driver.get_current_state()
 
-            # Simple heuristic: check if similar errors exist
             if finding.category == "console_error":
                 reproduced = any(finding.description in err for err in state.console_errors)
             elif finding.category == "network_error":
@@ -53,7 +47,6 @@ class Reproducer:
             logger.info(
                 "reproduction_result",
                 component="reproducer",
-                event="complete",
                 test_id=self._session.id,
                 finding_id=finding.id,
                 reproduced=reproduced,
@@ -64,7 +57,6 @@ class Reproducer:
             logger.warning(
                 "reproduction_failed",
                 component="reproducer",
-                event="error",
                 test_id=self._session.id,
                 finding_id=finding.id,
                 error=str(exc),

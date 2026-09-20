@@ -90,10 +90,9 @@ class WebTestDriver(TestDriver):
 
             self._initialized = True
             logger.info(
-                "driver_initialized",
+                "playwright_ready",
                 component="WebTestDriver",
                 test_id=self._session.id,
-                event="playwright_ready",
             )
         except Exception as exc:
             raise DriverError(f"Failed to initialize WebTestDriver: {exc}") from exc
