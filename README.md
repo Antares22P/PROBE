@@ -63,3 +63,8 @@ PROBE provides a live browser view where you can watch the AI:
 ## Status
 
 🚧 **PROBE V1 — In Development**
+
+
+Frontend start cmd : pnpm run dev
+
+Backend start cmd :  uv run uvicorn app.main:app --port 8000
