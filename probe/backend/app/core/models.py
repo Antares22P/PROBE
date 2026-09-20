@@ -59,6 +59,29 @@ class ActionType(str, Enum):
     SCREENSHOT = "SCREENSHOT"
 
 
+import hashlib
+import urllib.parse
+
+
+# ---------------------------------------------------------------------------
+# Dimensions & Viewport
+# ---------------------------------------------------------------------------
+
+
+class Dimensions(BaseModel):
+    """Dimensions of a webpage or screen."""
+
+    width: float = 0.0
+    height: float = 0.0
+
+
+class Viewport(BaseModel):
+    """Browser or device viewport size."""
+
+    width: int = 1280
+    height: int = 720
+
+
 # ---------------------------------------------------------------------------
 # Element
 # ---------------------------------------------------------------------------
@@ -78,11 +101,53 @@ class Element(BaseModel):
 
     id: str = Field(default_factory=_uuid)
     tag: str = ""
+    type: str = ""  # link, button, input:text, textarea, select, checkbox, radio, form, etc.
+    role: str = ""  # ARIA role or semantic role
     text: str = ""
-    selector: str = ""
-    bounds: Optional[Bounds] = None
-    is_interactive: bool = False
+    label: str = ""
+    reference: str = ""  # CSS selector, XPath, or stable locator
+    selector: str = ""  # Backward-compatible selector alias
+    visible: bool = True
+    enabled: bool = True
+    bounding_box: Optional[Bounds] = None
+    bounds: Optional[Bounds] = None  # Backward-compatible bounds alias
+    is_interactive: bool = True
     attributes: dict[str, str] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Signals & Logs
+# ---------------------------------------------------------------------------
+
+
+class ConsoleMessage(BaseModel):
+    """A captured browser console message."""
+
+    id: str = Field(default_factory=_uuid)
+    level: str = "log"  # log, info, warn, error, debug
+    text: str = ""
+    location: Optional[str] = None
+    timestamp: datetime = Field(default_factory=_now)
+
+
+class JavaScriptException(BaseModel):
+    """An uncaught JavaScript exception (pageerror)."""
+
+    id: str = Field(default_factory=_uuid)
+    message: str = ""
+    stack: Optional[str] = None
+    timestamp: datetime = Field(default_factory=_now)
+
+
+class FailedRequest(BaseModel):
+    """A network request that failed."""
+
+    id: str = Field(default_factory=_uuid)
+    url: str = ""
+    method: str = "GET"
+    failure_text: str = ""
+    status: Optional[int] = None
+    timestamp: datetime = Field(default_factory=_now)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +191,7 @@ class Evidence(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# ApplicationState
+# ApplicationState & Fingerprinting
 # ---------------------------------------------------------------------------
 
 
@@ -141,19 +206,80 @@ class NetworkEvent(BaseModel):
     error: Optional[str] = None
 
 
+def compute_state_fingerprint(
+    url: str,
+    title: str,
+    elements: list[Element],
+    visible_text: str = "",
+) -> str:
+    """
+    Generate a deterministic SHA-256 state fingerprint based on:
+    - Normalized URL (scheme, host, path, sorted query parameters, stripped fragment)
+    - Normalized page title
+    - Sorted interactive elements signature (type, role, text, label, reference)
+    - Text prefix
+    """
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+        qs = urllib.parse.parse_qsl(parsed.query)
+        sorted_qs = urllib.parse.urlencode(sorted(qs))
+        normalized_url = urllib.parse.urlunparse((
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            parsed.path.rstrip("/"),
+            "",
+            sorted_qs,
+            "",
+        ))
+    except Exception:
+        normalized_url = url.strip().lower()
+
+    norm_title = (title or "").strip().lower()
+
+    # Sort element signatures
+    elem_signatures = []
+    for elem in elements:
+        sig = f"{elem.type}|{elem.role}|{elem.text.strip()}|{elem.label.strip()}|{elem.reference.strip()}"
+        elem_signatures.append(sig)
+    elem_signatures.sort()
+
+    text_sample = (visible_text or "").strip()[:1000]
+
+    raw_payload = "\n".join([
+        f"URL:{normalized_url}",
+        f"TITLE:{norm_title}",
+        f"ELEMENTS:{'|'.join(elem_signatures)}",
+        f"TEXT:{text_sample}",
+    ])
+
+    return hashlib.sha256(raw_payload.encode("utf-8")).hexdigest()
+
+
 class ApplicationState(BaseModel):
     """A platform-independent snapshot of application state."""
 
     id: str = Field(default_factory=_uuid)
     url: str = ""
+    requested_url: str = ""
     title: str = ""
+    visible_text: str = ""
+    viewport: Optional[Viewport] = None
+    page_dimensions: Optional[Dimensions] = None
+    status_code: Optional[int] = None
+    duration_ms: Optional[float] = None
+    error: Optional[str] = None
     screenshot_path: Optional[str] = None
     elements: list[Element] = Field(default_factory=list)
-    network_events: list[NetworkEvent] = Field(default_factory=list)
+    console_messages: list[ConsoleMessage] = Field(default_factory=list)
     console_errors: list[str] = Field(default_factory=list)
+    js_exceptions: list[JavaScriptException] = Field(default_factory=list)
+    failed_requests: list[FailedRequest] = Field(default_factory=list)
+    network_events: list[NetworkEvent] = Field(default_factory=list)
+    fingerprint: Optional[str] = None
     timestamp: datetime = Field(default_factory=_now)
     platform: PlatformType = PlatformType.WEB
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
+
 
 
 # ---------------------------------------------------------------------------

@@ -27,9 +27,10 @@ class Explorer:
         self._driver = driver
         self._session = session
         self._visited_urls: set[str] = set()
+        self._visited_fingerprints: set[str] = set()
 
     async def explore_page(self, url: str) -> list[ApplicationState]:
-        """Navigate to a URL and collect the initial application state."""
+        """Navigate to a URL, capture screenshot, and collect deep application state."""
         logger.info(
             "explore_navigate",
             component="explorer",
@@ -41,21 +42,48 @@ class Explorer:
 
         navigate_action = Action(type=ActionType.NAVIGATE, value=url)
         state = await self._driver.execute_action(navigate_action)
-        states.append(state)
-        self._visited_urls.add(state.url)
 
-        await self._driver.capture_screenshot()
+        # Capture screenshot for the navigated page (if not fatal error)
+        try:
+            evidence = await self._driver.capture_screenshot()
+            state.screenshot_path = evidence.screenshot_path
+        except Exception as exc:
+            logger.warning(
+                "explore_screenshot_failed",
+                component="explorer",
+                test_id=self._session.id,
+                error=str(exc),
+            )
+
+        states.append(state)
+        if state.url:
+            self._visited_urls.add(state.url)
+        if state.fingerprint:
+            self._visited_fingerprints.add(state.fingerprint)
 
         logger.info(
             "page_captured",
             component="explorer",
             test_id=self._session.id,
             url=state.url,
+            status_code=state.status_code,
+            duration_ms=state.duration_ms,
             element_count=len(state.elements),
+            fingerprint=state.fingerprint,
+            screenshot_path=state.screenshot_path,
         )
 
         return states
 
+    def is_state_visited(self, fingerprint: str) -> bool:
+        """Check if a state fingerprint has already been discovered in this session."""
+        return fingerprint in self._visited_fingerprints
+
     @property
     def visited_urls(self) -> set[str]:
         return set(self._visited_urls)
+
+    @property
+    def visited_fingerprints(self) -> set[str]:
+        return set(self._visited_fingerprints)
+

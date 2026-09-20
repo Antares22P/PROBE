@@ -20,9 +20,9 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # Database location
-DB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "probe_data")
+DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "probe_data"))
 DB_PATH = os.path.join(DB_DIR, "probe.db")
-DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
+DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH.replace(os.sep, '/')}"
 
 engine = create_async_engine(
     DATABASE_URL,

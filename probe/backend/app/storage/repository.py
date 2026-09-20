@@ -109,3 +109,71 @@ class TestRepository:
             return finding
         except Exception as exc:
             raise DatabaseError(f"Failed to add finding: {exc}") from exc
+
+    async def get_findings(self, test_id: str) -> list[FindingModel]:
+        try:
+            result = await self._db.execute(
+                select(FindingModel)
+                .where(FindingModel.test_id == test_id)
+                .order_by(FindingModel.timestamp.asc())
+            )
+            return list(result.scalars().all())
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get findings for test {test_id}: {exc}") from exc
+
+    async def get_observations(self, test_id: str) -> list[ObservationModel]:
+        try:
+            result = await self._db.execute(
+                select(ObservationModel)
+                .where(ObservationModel.test_id == test_id)
+                .order_by(ObservationModel.timestamp.asc())
+            )
+            return list(result.scalars().all())
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get observations for test {test_id}: {exc}") from exc
+
+    async def get_latest_observation(self, test_id: str) -> Optional[ObservationModel]:
+        try:
+            result = await self._db.execute(
+                select(ObservationModel)
+                .where(ObservationModel.test_id == test_id)
+                .order_by(ObservationModel.timestamp.desc())
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get latest observation for test {test_id}: {exc}") from exc
+
+    async def get_latest_screenshot_evidence(self, test_id: str) -> Optional[EvidenceModel]:
+        try:
+            result = await self._db.execute(
+                select(EvidenceModel)
+                .where(
+                    EvidenceModel.test_id == test_id,
+                    EvidenceModel.evidence_type == "screenshot",
+                )
+                .order_by(EvidenceModel.timestamp.desc())
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get latest screenshot for test {test_id}: {exc}") from exc
+
+    async def get_observation_by_fingerprint(
+        self, test_id: str, fingerprint: str
+    ) -> Optional[ObservationModel]:
+        try:
+            result = await self._db.execute(
+                select(ObservationModel)
+                .where(
+                    ObservationModel.test_id == test_id,
+                    ObservationModel.fingerprint == fingerprint,
+                )
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get observation by fingerprint: {exc}") from exc
+
+
+

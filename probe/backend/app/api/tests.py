@@ -1,15 +1,16 @@
 """
-Tests API — CRUD + start/cancel endpoints.
+Tests API — CRUD + start/cancel + screenshot + events endpoints.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,7 @@ from app.core.models import PlatformType, TestConfig, TestSession
 from app.core.orchestrator.orchestrator import Orchestrator
 from app.drivers.web.playwright.driver import WebTestDriver
 from app.storage.database import get_db
-from app.storage.db_models import TestModel
+from app.storage.db_models import FindingModel, ObservationModel, TestModel
 from app.storage.repository import TestRepository
 from app.utils.logging import get_logger
 
@@ -43,6 +44,42 @@ class CreateTestRequest(BaseModel):
     config: Optional[dict] = None
 
 
+class FindingResponse(BaseModel):
+    id: str
+    severity: str
+    category: str
+    title: str
+    description: str
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ObservationResponse(BaseModel):
+    id: str
+    url: str
+    requested_url: str = ""
+    title: str = ""
+    visible_text: str = ""
+    viewport: Optional[dict] = None
+    page_dimensions: Optional[dict] = None
+    status_code: Optional[int] = None
+    duration_ms: Optional[float] = None
+    error: Optional[str] = None
+    screenshot_path: Optional[str] = None
+    element_count: int = 0
+    elements_data: list = []
+    console_messages: list = []
+    console_errors: list = []
+    js_exceptions: list = []
+    failed_requests: list = []
+    network_events: list = []
+    fingerprint: Optional[str] = None
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class TestResponse(BaseModel):
     id: str
     url: str
@@ -55,6 +92,16 @@ class TestResponse(BaseModel):
     error_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class TestDetailResponse(TestResponse):
+    current_url: Optional[str] = None
+    page_title: Optional[str] = None
+    duration_ms: Optional[float] = None
+    status_code: Optional[int] = None
+    screenshot_url: Optional[str] = None
+    observations: list[ObservationResponse] = []
+    findings: list[FindingResponse] = []
 
 
 def _to_response(t: TestModel) -> TestResponse:
@@ -121,13 +168,79 @@ async def list_tests(
 async def get_test(
     test_id: str,
     db: AsyncSession = Depends(get_db),
-) -> TestResponse:
-    """Get a test session by ID."""
+) -> TestDetailResponse:
+    """Get a detailed test session by ID with latest observations, findings, and screenshot URL."""
     repo = TestRepository(db)
     test = await repo.get(test_id)
     if test is None:
         raise HTTPException(status_code=404, detail=f"Test {test_id} not found")
-    return _to_response(test)
+
+    observations = await repo.get_observations(test_id)
+    findings = await repo.get_findings(test_id)
+    latest_obs = observations[-1] if observations else None
+    latest_ev = await repo.get_latest_screenshot_evidence(test_id)
+
+    has_screenshot = False
+    if latest_ev and latest_ev.screenshot_path and os.path.exists(latest_ev.screenshot_path):
+        has_screenshot = True
+    elif latest_obs and latest_obs.screenshot_path and os.path.exists(latest_obs.screenshot_path):
+        has_screenshot = True
+
+    screenshot_url = f"/api/tests/{test_id}/screenshot" if has_screenshot else None
+
+    # Calculate overall duration
+    duration_ms: Optional[float] = None
+    if latest_obs and latest_obs.duration_ms is not None:
+        duration_ms = latest_obs.duration_ms
+    elif test.completed_at and test.started_at:
+        duration_ms = round((test.completed_at - test.started_at).total_seconds() * 1000, 2)
+
+    return TestDetailResponse(
+        id=test.id,
+        url=test.url,
+        status=test.status,
+        platform=test.platform,
+        created_at=test.created_at,
+        updated_at=test.updated_at,
+        started_at=test.started_at,
+        completed_at=test.completed_at,
+        error_message=test.error_message,
+        current_url=latest_obs.url if latest_obs and latest_obs.url else test.url,
+        page_title=latest_obs.title if latest_obs else "",
+        duration_ms=duration_ms,
+        status_code=latest_obs.status_code if latest_obs else None,
+        screenshot_url=screenshot_url,
+        observations=[ObservationResponse.model_validate(o) for o in observations],
+        findings=[FindingResponse.model_validate(f) for f in findings],
+    )
+
+
+@router.get("/tests/{test_id}/screenshot")
+async def get_test_screenshot(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """Retrieve the captured screenshot for a test session."""
+    from app.storage.artifacts import default_artifact_storage
+
+    repo = TestRepository(db)
+    ev = await repo.get_latest_screenshot_evidence(test_id)
+    if ev and ev.screenshot_path:
+        path = ev.screenshot_path
+        if not os.path.isabs(path):
+            path = os.path.join(default_artifact_storage.base_dir, path)
+        if os.path.exists(path):
+            return FileResponse(path, media_type="image/png")
+
+    obs = await repo.get_latest_observation(test_id)
+    if obs and obs.screenshot_path:
+        path = obs.screenshot_path
+        if not os.path.isabs(path):
+            path = os.path.join(default_artifact_storage.base_dir, path)
+        if os.path.exists(path):
+            return FileResponse(path, media_type="image/png")
+
+    raise HTTPException(status_code=404, detail="Screenshot not available for this test")
 
 
 @router.post("/tests/{test_id}/start")
@@ -147,6 +260,9 @@ async def start_test(
         )
     if test_id in _running_tasks and not _running_tasks[test_id].done():
         raise HTTPException(status_code=409, detail="Test is already running")
+
+    # Mark as running in repository immediately
+    await repo.update_status(test_id, "running")
 
     session = TestSession(
         id=test.id,

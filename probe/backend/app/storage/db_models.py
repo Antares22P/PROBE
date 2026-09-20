@@ -79,12 +79,27 @@ class ObservationModel(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     test_id: Mapped[str] = mapped_column(ForeignKey("tests.id"), nullable=False)
     url: Mapped[str] = mapped_column(String(2048), default="")
+    requested_url: Mapped[str] = mapped_column(String(2048), default="")
     title: Mapped[str] = mapped_column(String(512), default="")
+    visible_text: Mapped[str] = mapped_column(Text, default="")
+    viewport: Mapped[dict] = mapped_column(JSON, default=dict)
+    page_dimensions: Mapped[dict] = mapped_column(JSON, default=dict)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    screenshot_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     element_count: Mapped[int] = mapped_column(Integer, default=0)
+    elements_data: Mapped[list] = mapped_column(JSON, default=list)
+    console_messages: Mapped[list] = mapped_column(JSON, default=list)
     console_errors: Mapped[list] = mapped_column(JSON, default=list)
+    js_exceptions: Mapped[list] = mapped_column(JSON, default=list)
+    failed_requests: Mapped[list] = mapped_column(JSON, default=list)
+    network_events: Mapped[list] = mapped_column(JSON, default=list)
+    fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     test: Mapped[TestModel] = relationship("TestModel", back_populates="observations")
+
 
 
 class EvidenceModel(Base):

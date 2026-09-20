@@ -1,5 +1,5 @@
 """
-Tests for /api/tests CRUD endpoints.
+Tests for /api/tests CRUD and screenshot endpoints.
 
 Uses in-memory SQLite via FastAPI dependency override.
 """
@@ -111,7 +111,10 @@ async def test_get_test_by_id():
         test_id = create_resp.json()["id"]
         response = await client.get(f"/api/tests/{test_id}")
     assert response.status_code == 200
-    assert response.json()["id"] == test_id
+    data = response.json()
+    assert data["id"] == test_id
+    assert "observations" in data
+    assert "findings" in data
 
 
 @pytest.mark.asyncio
@@ -125,7 +128,22 @@ async def test_get_test_not_found():
 
 
 @pytest.mark.asyncio
-async def test_cannot_start_non_pending_test():
+async def test_get_test_screenshot_not_found():
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/api/tests/nonexistent-id/screenshot")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cannot_start_non_pending_test(monkeypatch):
+    async def mock_run(self):
+        pass
+
+    monkeypatch.setattr("app.core.orchestrator.orchestrator.Orchestrator.run", mock_run)
+
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
@@ -137,3 +155,6 @@ async def test_cannot_start_non_pending_test():
         # Second start should fail with 409
         response = await client.post(f"/api/tests/{test_id}/start")
     assert response.status_code == 409
+
+
+
