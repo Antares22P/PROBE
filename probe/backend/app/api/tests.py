@@ -14,6 +14,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.factory import get_ai_provider
+from app.ai.schemas.finding_analysis import FindingAnalysisResult, TestSummaryAnalysis
 from app.core.models import PlatformType, TestConfig, TestSession
 from app.core.orchestrator.orchestrator import Orchestrator
 from app.drivers.web.playwright.driver import WebTestDriver
@@ -72,6 +74,7 @@ class FindingResponse(BaseModel):
     evidence: list[dict[str, Any]] = []
     reproduction: Optional[dict[str, Any]] = None
     recommendation: Optional[str] = None
+    ai_analysis: Optional[dict[str, Any]] = None
     fingerprint: Optional[str] = None
     timestamp: datetime
 
@@ -145,6 +148,7 @@ class TestDetailResponse(TestResponse):
     duration_ms: Optional[float] = None
     status_code: Optional[int] = None
     screenshot_url: Optional[str] = None
+    ai_summary: Optional[dict[str, Any]] = None
     actions: list[ActionResponse] = []
     observations: list[ObservationResponse] = []
     findings: list[FindingResponse] = []
@@ -258,6 +262,7 @@ async def get_test(
         duration_ms=duration_ms,
         status_code=latest_obs.status_code if latest_obs else None,
         screenshot_url=screenshot_url,
+        ai_summary=test.ai_summary,
         actions=[ActionResponse.model_validate(a) for a in actions],
         observations=[ObservationResponse.model_validate(o) for o in observations],
         findings=[FindingResponse.model_validate(f) for f in findings],
@@ -498,6 +503,104 @@ async def get_finding(
     if not f:
         raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
     return FindingResponse.model_validate(f)
+
+
+@router.post("/tests/{test_id}/findings/{finding_id}/analyze", response_model=FindingAnalysisResult)
+async def analyze_finding_endpoint(
+    test_id: str,
+    finding_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FindingAnalysisResult:
+    """Analyze a single finding using the configured AI provider."""
+    repo = TestRepository(db)
+    f_model = await repo.get_finding(finding_id)
+    if not f_model or f_model.test_id != test_id:
+        raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found for test {test_id}")
+
+    finding = Finding(
+        id=f_model.id,
+        test_id=f_model.test_id,
+        title=f_model.title,
+        category=FindingCategory(f_model.category) if f_model.category in [e.value for e in FindingCategory] else FindingCategory.OTHER,
+        severity=FindingSeverity(f_model.severity) if f_model.severity in [e.value for e in FindingSeverity] else FindingSeverity.MEDIUM,
+        status=FindingStatus(f_model.status) if f_model.status in [e.value for e in FindingStatus] else FindingStatus.POTENTIAL,
+        confidence=f_model.confidence,
+        description=f_model.description,
+        evidence=f_model.evidence or [],
+        reproduction=f_model.reproduction,
+        recommendation=f_model.recommendation,
+        fingerprint=f_model.fingerprint,
+    )
+
+    provider = get_ai_provider()
+    analysis = await provider.analyze_finding(finding)
+
+    # Persist analysis to finding
+    f_model.ai_analysis = analysis.model_dump(mode="json")
+    if analysis.recommendation and not f_model.recommendation:
+        f_model.recommendation = analysis.recommendation
+    await repo.update_finding(f_model)
+
+    await _broadcast(test_id, {
+        "type": "finding_analyzed",
+        "finding_id": finding_id,
+        "ai_analysis": f_model.ai_analysis,
+    })
+
+    return analysis
+
+
+@router.post("/tests/{test_id}/analyze", response_model=TestSummaryAnalysis)
+async def analyze_test_endpoint(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> TestSummaryAnalysis:
+    """Analyze overall test quality and generate executive AI summary."""
+    repo = TestRepository(db)
+    test = await repo.get(test_id)
+    if not test:
+        raise HTTPException(status_code=404, detail=f"Test {test_id} not found")
+
+    finding_models = await repo.get_findings(test_id)
+    findings = [
+        Finding(
+            id=fm.id,
+            test_id=fm.test_id,
+            title=fm.title,
+            category=FindingCategory(fm.category) if fm.category in [e.value for e in FindingCategory] else FindingCategory.OTHER,
+            severity=FindingSeverity(fm.severity) if fm.severity in [e.value for e in FindingSeverity] else FindingSeverity.MEDIUM,
+            status=FindingStatus(fm.status) if fm.status in [e.value for e in FindingStatus] else FindingStatus.POTENTIAL,
+            confidence=fm.confidence,
+            description=fm.description,
+            evidence=fm.evidence or [],
+            reproduction=fm.reproduction,
+            recommendation=fm.recommendation,
+            fingerprint=fm.fingerprint,
+        )
+        for fm in finding_models
+    ]
+
+    test_dict = {
+        "id": test.id,
+        "url": test.url,
+        "status": test.status,
+        "started_at": str(test.started_at) if test.started_at else None,
+        "completed_at": str(test.completed_at) if test.completed_at else None,
+    }
+
+    provider = get_ai_provider()
+    summary = await provider.generate_test_summary(findings, test_dict)
+
+    test.ai_summary = summary.model_dump(mode="json")
+    await repo.update(test)
+
+    await _broadcast(test_id, {
+        "type": "test_analyzed",
+        "test_id": test_id,
+        "ai_summary": test.ai_summary,
+    })
+
+    return summary
 
 
 @router.get("/tests/{test_id}/events")

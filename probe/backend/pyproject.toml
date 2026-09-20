@@ -15,6 +15,7 @@ dependencies = [
     "python-multipart>=0.0.12",
     "structlog>=24.4.0",
     "anyio>=4.6.0",
+    "google-genai>=2.3.0",
 ]
 
 [dependency-groups]

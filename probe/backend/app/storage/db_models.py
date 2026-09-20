@@ -37,6 +37,7 @@ class TestModel(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     actions: Mapped[list[ActionModel]] = relationship(
         "ActionModel", back_populates="test", cascade="all, delete-orphan"
@@ -137,6 +138,7 @@ class FindingModel(Base):
     evidence: Mapped[list] = mapped_column(JSON, default=list)
     reproduction: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_analysis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     evidence_ids: Mapped[list] = mapped_column(JSON, default=list)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

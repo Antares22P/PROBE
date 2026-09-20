@@ -48,6 +48,9 @@ class TestRepository:
         except Exception as exc:
             raise DatabaseError(f"Failed to get test {test_id}: {exc}") from exc
 
+    async def get_by_id(self, test_id: str) -> Optional[TestModel]:
+        return await self.get(test_id)
+
     async def list_all(self, limit: int = 100, offset: int = 0) -> list[TestModel]:
         try:
             result = await self._db.execute(
@@ -85,6 +88,13 @@ class TestRepository:
             raise
         except Exception as exc:
             raise DatabaseError(f"Failed to update test status: {exc}") from exc
+
+    async def update(self, test: TestModel) -> TestModel:
+        try:
+            await self._db.flush()
+            return test
+        except Exception as exc:
+            raise DatabaseError(f"Failed to update test: {exc}") from exc
 
     async def add_action(self, action: ActionModel) -> ActionModel:
         try:
@@ -139,6 +149,15 @@ class TestRepository:
             return list(result.scalars().all())
         except Exception as exc:
             raise DatabaseError(f"Failed to get findings for test {test_id}: {exc}") from exc
+
+    async def get_finding(self, finding_id: str) -> Optional[FindingModel]:
+        try:
+            result = await self._db.execute(
+                select(FindingModel).where(FindingModel.id == finding_id)
+            )
+            return result.scalar_one_or_none()
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get finding {finding_id}: {exc}") from exc
 
     async def get_finding_by_fingerprint(
         self, test_id: str, fingerprint: str

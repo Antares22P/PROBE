@@ -7,7 +7,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Callable, Coroutine, Any, Optional
 
-from app.ai.providers.null_provider import NullProvider
+from app.ai.factory import get_ai_provider
+from app.ai.provider import AIProvider
 from app.core.models import ApplicationState, TestSession, TestStatus
 from app.decisions.decision_maker import DecisionMaker
 from app.detection.detector import Detector
@@ -41,12 +42,13 @@ class Orchestrator:
         session: TestSession,
         repository: TestRepository,
         event_callback: Optional[EventCallback] = None,
+        ai_provider: Optional[AIProvider] = None,
     ) -> None:
         self._driver = driver
         self._session = session
         self._repo = repository
         self._event_callback = event_callback
-        self._ai = NullProvider()
+        self._ai = ai_provider or get_ai_provider()
 
     async def run(self) -> None:
         """Execute the full test and persist results."""
@@ -182,10 +184,15 @@ class Orchestrator:
                     })
 
             await self._emit("status", {"status": "running", "message": "Analyzing exploration findings..."})
-            ai_summary = await self._ai.analyze_findings(
-                [f.model_dump() for f in all_findings],
-                {"url": self._session.url},
+            ai_summary_res = await self._ai.generate_test_summary(
+                all_findings,
+                {"url": self._session.url, "states_count": len(states), "actions_count": len(action_results)},
             )
+            ai_summary = ai_summary_res.model_dump(mode="json")
+            test_model = await self._repo.get(self._session.id)
+            if test_model:
+                test_model.ai_summary = ai_summary
+                await self._repo.update(test_model)
 
             # Determine final status (completed vs failed if navigation had fatal error)
             final_status = "completed"

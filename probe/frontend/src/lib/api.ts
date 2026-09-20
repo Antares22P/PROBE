@@ -1,4 +1,4 @@
-import type { Finding, ReproductionResult, Test } from '../types'
+import type { Finding, FindingAnalysisResult, ReproductionResult, Test, TestSummaryAnalysis } from '../types'
 
 const BASE = '/api'
 
@@ -53,4 +53,14 @@ export const api = {
 
   getFinding: (testId: string, findingId: string) =>
     request<Finding>(`/tests/${testId}/findings/${findingId}`),
+
+  analyzeFinding: (testId: string, findingId: string) =>
+    request<FindingAnalysisResult>(`/tests/${testId}/findings/${findingId}/analyze`, {
+      method: 'POST',
+    }),
+
+  analyzeTest: (testId: string) =>
+    request<TestSummaryAnalysis>(`/tests/${testId}/analyze`, {
+      method: 'POST',
+    }),
 }

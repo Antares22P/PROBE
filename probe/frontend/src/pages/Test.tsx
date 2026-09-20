@@ -255,15 +255,41 @@ function FindingDetailModal({
   const [reproHistory, setReproHistory] = useState<ReproductionResult[]>([])
   const [reproError, setReproError] = useState<string | null>(null)
 
+  const [analyzing, setAnalyzing] = useState(false)
+  const [aiAnalysis, setAiAnalysis] = useState<any>(finding.ai_analysis || null)
+  const [aiAnalysisError, setAiAnalysisError] = useState<string | null>(null)
+
+  const handleRunAnalysis = async () => {
+    setAnalyzing(true)
+    setAiAnalysisError(null)
+    try {
+      const res = await api.analyzeFinding(testId, finding.id)
+      setAiAnalysis(res)
+      const updated = {
+        ...finding,
+        ai_analysis: res,
+        recommendation: res.recommendation || finding.recommendation,
+      }
+      onFindingUpdated(updated)
+    } catch (err: any) {
+      setAiAnalysisError(err.message || 'AI analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
   // Load prior reproductions on mount
   useEffect(() => {
+    if (finding.ai_analysis) {
+      setAiAnalysis(finding.ai_analysis)
+    }
     api.getReproductions(testId, finding.id)
       .then((reps) => {
         setReproHistory(reps)
         if (reps.length > 0) setLatestReproduction(reps[0])
       })
       .catch(() => {})
-  }, [testId, finding.id])
+  }, [testId, finding.id, finding.ai_analysis])
 
   // Extract structured action sequence
   const actionSequence: string[] = (() => {
@@ -336,6 +362,160 @@ function FindingDetailModal({
           >
             ✕
           </button>
+        </div>
+
+        {/* AI Reasoning Layer (Gemini) */}
+        <div className="p-4 rounded-lg bg-gradient-to-b from-purple-950/30 to-slate-950 border border-purple-800/40 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-xs uppercase text-purple-300 font-bold flex items-center gap-1.5">
+                <span>✨ AI Reasoning & Root Cause Analysis</span>
+                {aiAnalysis?.model_name && (
+                  <span className="px-2 py-0.5 rounded text-[10px] bg-purple-900/60 text-purple-200 border border-purple-700/50 normal-case font-mono">
+                    {aiAnalysis.model_name}
+                  </span>
+                )}
+              </h3>
+              <p className="text-[11px] text-slate-400 font-sans mt-0.5">
+                Gemini analyzes empirical telemetry, separates observed facts from root-cause hypotheses, and provides remediation.
+              </p>
+            </div>
+            <button
+              onClick={handleRunAnalysis}
+              disabled={analyzing}
+              className="px-3.5 py-1.5 rounded text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0 shadow-lg shadow-purple-950/50"
+            >
+              {analyzing ? (
+                <>
+                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                  <span>Reasoning with Gemini...</span>
+                </>
+              ) : (
+                <span>✨ {aiAnalysis ? 'Re-Analyze with AI' : 'Analyze with AI'}</span>
+              )}
+            </button>
+          </div>
+
+          {aiAnalysisError && (
+            <div className="p-2.5 rounded bg-red-950/50 border border-red-900 text-red-300 text-xs font-sans">
+              {aiAnalysisError}
+            </div>
+          )}
+
+          {aiAnalysis && (
+            <div className="space-y-3 pt-2 border-t border-purple-900/40 text-xs">
+              {/* Status Header */}
+              <div className="flex items-center justify-between flex-wrap gap-2 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Meaningful Finding:</span>
+                  <span className={`px-2 py-0.5 rounded font-bold uppercase ${aiAnalysis.is_meaningful ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/50' : 'bg-slate-800 text-slate-400'}`}>
+                    {aiAnalysis.is_meaningful ? 'YES (Genuine Defect)' : 'NO (Benign Noise)'}
+                  </span>
+                </div>
+                {aiAnalysis.severity_suggestion && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">AI Suggested Severity:</span>
+                    <FindingSeverityBadge severity={aiAnalysis.severity_suggestion} />
+                  </div>
+                )}
+                {aiAnalysis.confidence !== undefined && (
+                  <span className="text-purple-300 font-semibold">
+                    {(aiAnalysis.confidence * 100).toFixed(0)}% AI Confidence
+                  </span>
+                )}
+              </div>
+
+              {/* Error Warning if any */}
+              {aiAnalysis.error && (
+                <div className="p-2.5 rounded bg-amber-950/40 border border-amber-800/50 text-amber-300 text-[11px] font-sans">
+                  <span className="font-bold">[{aiAnalysis.error.error_type}]:</span> {aiAnalysis.error.message}
+                </div>
+              )}
+
+              {/* Explanation & Root Cause */}
+              {aiAnalysis.explanation && (
+                <div className="p-3 rounded bg-slate-900/80 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-purple-300 block">AI Explanation & Mechanism</span>
+                  <p className="text-slate-200 font-sans leading-relaxed text-xs">{aiAnalysis.explanation}</p>
+                </div>
+              )}
+
+              {aiAnalysis.possible_cause && (
+                <div className="p-3 rounded bg-slate-900/80 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-indigo-300 block">Likely Technical Root Cause</span>
+                  <p className="text-slate-200 font-sans leading-relaxed text-xs">{aiAnalysis.possible_cause}</p>
+                </div>
+              )}
+
+              {/* Fact vs Hypothesis Breakdown Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                {/* Observed Facts */}
+                <div className="p-3 rounded bg-slate-900/90 border border-emerald-900/40 space-y-2">
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1">
+                    <span>✓ Observed Empirical Facts</span>
+                  </span>
+                  <ul className="space-y-1.5 text-[11px] font-sans text-slate-300">
+                    {(aiAnalysis.observed_facts && aiAnalysis.observed_facts.length > 0) ? (
+                      aiAnalysis.observed_facts.map((fact: string, idx: number) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <span className="text-emerald-400 font-bold shrink-0">•</span>
+                          <span>{fact}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-slate-500 italic">No specific facts isolated.</li>
+                    )}
+                  </ul>
+                </div>
+
+                {/* Hypotheses */}
+                <div className="p-3 rounded bg-slate-900/90 border border-purple-900/40 space-y-2">
+                  <span className="text-[10px] uppercase font-bold text-purple-400 flex items-center gap-1">
+                    <span>💡 Root Cause Hypotheses</span>
+                  </span>
+                  <ul className="space-y-1.5 text-[11px] font-sans text-slate-300">
+                    {(aiAnalysis.hypotheses && aiAnalysis.hypotheses.length > 0) ? (
+                      aiAnalysis.hypotheses.map((hyp: string, idx: number) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <span className="text-purple-400 font-bold shrink-0">?</span>
+                          <span>{hyp}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-slate-500 italic">No hypotheses generated.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Uncertainty Callout */}
+              {aiAnalysis.uncertainty && (
+                <div className="p-2.5 rounded bg-amber-950/20 border border-amber-900/40 text-amber-200 text-[11px] font-sans flex items-start gap-2">
+                  <span className="shrink-0 text-amber-400">⚠️</span>
+                  <div>
+                    <span className="font-bold text-amber-300 block mb-0.5">Uncertainty & Unknowns:</span>
+                    <span>{aiAnalysis.uncertainty}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Actionable Recommendation */}
+              {aiAnalysis.recommendation && (
+                <div className="p-3 rounded bg-emerald-950/20 border border-emerald-900/40 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-emerald-300 block">🛠 Remediation Guidance</span>
+                  <p className="text-emerald-100 font-sans leading-relaxed text-xs">{aiAnalysis.recommendation}</p>
+                </div>
+              )}
+
+              {/* Investigation Suggestions */}
+              {aiAnalysis.investigation_suggestion && (
+                <div className="p-2.5 rounded bg-slate-900 border border-slate-800 text-[11px] font-sans text-slate-300">
+                  <span className="font-bold text-slate-400 block mb-0.5">🔍 Next Investigation Steps:</span>
+                  <span>{aiAnalysis.investigation_suggestion}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Deterministic Reproduction Section */}
@@ -703,6 +883,20 @@ export function Test() {
           return f
         })
       )
+    } else if (last.type === 'finding_analyzed' && last.finding_id) {
+      setLiveFindings((prev) =>
+        prev.map((f) => {
+          if (f.id === last.finding_id) {
+            return {
+              ...f,
+              ai_analysis: (last as any).ai_analysis || f.ai_analysis,
+            }
+          }
+          return f
+        })
+      )
+    } else if (last.type === 'test_analyzed' && (last as any).ai_summary) {
+      setTest((prev) => (prev ? { ...prev, ai_summary: (last as any).ai_summary } : prev))
     } else if (last.type === 'screenshot' && last.url) {
       setLiveScreenshotUrl(`${last.url}?t=${Date.now()}`)
     } else if (last.type === 'status') {
@@ -1055,6 +1249,11 @@ export function Test() {
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 uppercase">
                           {f.category}
                         </span>
+                        {f.ai_analysis && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800/40">
+                            ✨ AI Analyzed
+                          </span>
+                        )}
                         {f.confidence !== undefined && (
                           <span className="text-[10px] font-mono text-indigo-400">
                             {(f.confidence * 100).toFixed(0)}% conf

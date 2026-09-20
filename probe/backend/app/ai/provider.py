@@ -1,8 +1,8 @@
 """
-AIProvider — abstract base class for AI integrations.
+AIProvider — abstract base class for AI integrations in PROBE.
 
-Create a concrete provider (e.g., GeminiProvider) by subclassing AIProvider.
-V1 ships with NullProvider only.
+The Core depends strictly on this interface. Concrete implementations
+(e.g., GeminiProvider, NullProvider) handle model-specific APIs.
 """
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 from pydantic import BaseModel
+
+from app.ai.schemas.finding_analysis import FindingAnalysisResult, TestSummaryAnalysis
+from app.findings.models import Finding
 
 
 class AIRequest(BaseModel):
@@ -35,18 +38,36 @@ class AIProvider(ABC):
     Abstract AI provider interface.
 
     Implementations:
-        - NullProvider  (probe.backend.app.ai.providers.null_provider) — no-op
-        - GeminiProvider  (future)
+        - GeminiProvider  (probe.backend.app.ai.providers.gemini_provider)
+        - NullProvider    (probe.backend.app.ai.providers.null_provider)
     """
 
     @abstractmethod
     async def generate(self, request: AIRequest) -> AIResponse:
-        """Generate a response for the given request."""
+        """Generate a raw text response for the given request."""
         ...
 
     @abstractmethod
-    async def analyze_findings(self, findings: list[dict], context: dict) -> str:
-        """Analyze a list of findings and return a structured report."""
+    async def analyze_finding(
+        self,
+        finding: Finding,
+        evidence_context: Optional[dict[str, Any]] = None,
+    ) -> FindingAnalysisResult:
+        """
+        Analyze a structured finding and return structured AI reasoning.
+        Must not crash if the provider is unavailable or fails.
+        """
+        ...
+
+    @abstractmethod
+    async def generate_test_summary(
+        self,
+        findings: list[Finding],
+        test_summary: dict[str, Any],
+    ) -> TestSummaryAnalysis:
+        """
+        Analyze all findings from a test session and produce a high-level summary.
+        """
         ...
 
     @property
@@ -58,5 +79,5 @@ class AIProvider(ABC):
     @property
     @abstractmethod
     def is_available(self) -> bool:
-        """Return True if the provider is configured and available."""
+        """Return True if the provider is configured and ready."""
         ...

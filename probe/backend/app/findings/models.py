@@ -116,6 +116,7 @@ class Finding(BaseModel):
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     reproduction: Optional[dict[str, Any]] = None
     recommendation: Optional[str] = None
+    ai_analysis: Optional[dict[str, Any]] = None
     fingerprint: Optional[str] = None
     timestamp: datetime = Field(default_factory=_now)
     created_at: datetime = Field(default_factory=_now)

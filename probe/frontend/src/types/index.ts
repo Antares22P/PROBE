@@ -125,6 +125,41 @@ export interface ReproductionResult {
   completed_at?: string | null
 }
 
+export interface AIError {
+  error_type: string
+  message: string
+  details?: string | null
+  timestamp: string
+}
+
+export interface FindingAnalysisResult {
+  id: string
+  is_meaningful: boolean
+  category: string
+  severity_suggestion: string
+  confidence: number
+  observed_facts: string[]
+  hypotheses: string[]
+  uncertainty: string
+  explanation: string
+  possible_cause: string
+  recommendation: string
+  investigation_suggestion: string
+  error?: AIError | null
+  model_name?: string | null
+  analyzed_at: string
+}
+
+export interface TestSummaryAnalysis {
+  overall_health: string
+  key_takeaways: string[]
+  top_risks?: string[]
+  recommended_actions?: string[]
+  error?: AIError | null
+  model_name?: string | null
+  analyzed_at: string
+}
+
 export interface Finding {
   id: string
   severity: FindingSeverity | string
@@ -136,6 +171,7 @@ export interface Finding {
   evidence?: Array<Record<string, any>>
   reproduction?: Record<string, any> | null
   recommendation?: string | null
+  ai_analysis?: FindingAnalysisResult | Record<string, any> | null
   fingerprint?: string | null
   reproductions?: ReproductionResult[]
   timestamp: string
@@ -156,6 +192,7 @@ export interface Test {
   duration_ms?: number | null
   status_code?: number | null
   screenshot_url?: string | null
+  ai_summary?: TestSummaryAnalysis | Record<string, any> | null
   actions?: ActionItem[]
   observations?: Observation[]
   findings?: Finding[]
@@ -168,6 +205,8 @@ export interface SSEEvent {
     | 'observation'
     | 'finding'
     | 'finding_reproduced'
+    | 'finding_analyzed'
+    | 'test_analyzed'
     | 'screenshot'
     | 'action_start'
     | 'action_completed'
