@@ -10,6 +10,7 @@ import type {
   JavaScriptException,
   FailedRequest,
   ActionItem,
+  Finding,
 } from '../types'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -26,6 +27,48 @@ const SEVERITY_COLORS: Record<string, string> = {
   medium: '#f59e0b',
   low: '#6366f1',
   info: '#6b7280',
+}
+
+const FINDING_STATUS_COLORS: Record<string, string> = {
+  potential: '#38bdf8',
+  investigating: '#c084fc',
+  confirmed: '#ef4444',
+  unconfirmed: '#94a3b8',
+  dismissed: '#64748b',
+}
+
+function FindingStatusBadge({ status }: { status?: string }) {
+  const s = status || 'potential'
+  const color = FINDING_STATUS_COLORS[s] ?? '#94a3b8'
+  return (
+    <span
+      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
+      style={{
+        color,
+        backgroundColor: `${color}18`,
+        border: `1px solid ${color}35`,
+      }}
+    >
+      {s}
+    </span>
+  )
+}
+
+function FindingSeverityBadge({ severity }: { severity?: string }) {
+  const sev = severity || 'medium'
+  const color = SEVERITY_COLORS[sev] ?? '#6b7280'
+  return (
+    <span
+      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
+      style={{
+        color,
+        backgroundColor: `${color}18`,
+        border: `1px solid ${color}35`,
+      }}
+    >
+      {sev}
+    </span>
+  )
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -168,6 +211,173 @@ function EventRow({ event }: { event: SSEEvent }) {
   return null
 }
 
+function FindingDetailModal({
+  finding,
+  onClose,
+}: {
+  finding: Finding
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+      <div
+        className="w-full max-w-3xl rounded-xl border p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto font-mono"
+        style={{ background: '#111118', borderColor: '#2d2d3f' }}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
+          <div>
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <FindingSeverityBadge severity={finding.severity} />
+              <FindingStatusBadge status={finding.status} />
+              <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 uppercase tracking-wider font-semibold">
+                {finding.category}
+              </span>
+              {finding.confidence !== undefined && (
+                <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-800/40">
+                  {(finding.confidence * 100).toFixed(0)}% Confidence
+                </span>
+              )}
+            </div>
+            <h2 className="text-base font-bold text-slate-100 font-sans">{finding.title}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors shrink-0 text-sm"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Description */}
+        <div>
+          <h3 className="text-xs uppercase text-slate-500 font-semibold mb-1">Description</h3>
+          <p className="text-xs text-slate-300 font-sans whitespace-pre-wrap leading-relaxed bg-slate-950/60 p-3 rounded border border-slate-800/80">
+            {finding.description || 'No description provided.'}
+          </p>
+        </div>
+
+        {/* Recommendation */}
+        {finding.recommendation && (
+          <div>
+            <h3 className="text-xs uppercase text-amber-400 font-semibold mb-1 flex items-center gap-1.5">
+              <span>💡 Actionable Recommendation</span>
+            </h3>
+            <div className="text-xs text-amber-200/90 font-sans leading-relaxed bg-amber-950/20 p-3 rounded border border-amber-800/30">
+              {finding.recommendation}
+            </div>
+          </div>
+        )}
+
+        {/* Fingerprint */}
+        {finding.fingerprint && (
+          <div>
+            <h3 className="text-xs uppercase text-slate-500 font-semibold mb-1">Stable Fingerprint (SHA-256)</h3>
+            <div className="text-[11px] text-indigo-300/90 bg-slate-950 p-2.5 rounded border border-slate-800 break-all">
+              {finding.fingerprint}
+            </div>
+          </div>
+        )}
+
+        {/* Reproduction Context */}
+        {finding.reproduction && Object.keys(finding.reproduction).length > 0 && (
+          <div>
+            <h3 className="text-xs uppercase text-slate-500 font-semibold mb-1">Reproduction Context</h3>
+            <pre className="text-[11px] text-slate-300 bg-slate-950 p-3 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap">
+              {JSON.stringify(finding.reproduction, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        {/* Evidence List */}
+        <div>
+          <h3 className="text-xs uppercase text-slate-400 font-semibold mb-2">
+            Captured Evidence ({finding.evidence?.length || 0} occurrence{finding.evidence?.length !== 1 ? 's' : ''})
+          </h3>
+          {(!finding.evidence || finding.evidence.length === 0) ? (
+            <p className="text-xs text-slate-600">No raw evidence items attached.</p>
+          ) : (
+            <div className="space-y-3">
+              {finding.evidence.map((ev, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-lg border bg-slate-950/80 border-slate-800/90 space-y-2 text-xs"
+                >
+                  <div className="flex items-center justify-between text-slate-400 border-b border-slate-800/50 pb-1.5">
+                    <span className="font-semibold text-indigo-400 uppercase text-[10px]">
+                      Evidence #{idx + 1} — {ev.type || 'Signal'}
+                    </span>
+                    {ev.timestamp && <span className="text-[10px] text-slate-500">{ev.timestamp}</span>}
+                  </div>
+
+                  {ev.url && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-slate-500 text-[10px] shrink-0">URL:</span>
+                      <span className="text-slate-200 break-all">{ev.url}</span>
+                    </div>
+                  )}
+
+                  {ev.status_code && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 text-[10px]">Status:</span>
+                      <StatusCodeBadge code={ev.status_code} />
+                    </div>
+                  )}
+
+                  {ev.failure_text && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-red-400 text-[10px] shrink-0">Error:</span>
+                      <span className="text-red-300">{ev.failure_text}</span>
+                    </div>
+                  )}
+
+                  {ev.message && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-amber-400 text-[10px] shrink-0">Message:</span>
+                      <span className="text-amber-200 break-all">{ev.message}</span>
+                    </div>
+                  )}
+
+                  {ev.stack && (
+                    <div>
+                      <span className="text-slate-500 text-[10px] block mb-1">Stack Trace:</span>
+                      <pre className="p-2 rounded bg-black/60 text-red-300 text-[10px] overflow-x-auto whitespace-pre-wrap border border-red-950/60">
+                        {ev.stack}
+                      </pre>
+                    </div>
+                  )}
+
+                  {ev.text && (
+                    <div className="text-slate-300 bg-slate-900/50 p-2 rounded">
+                      {ev.text}
+                    </div>
+                  )}
+
+                  {ev.screenshot_path && (
+                    <div className="text-[10px] text-emerald-400/80">
+                      📸 Viewport snapshot recorded at time of discovery
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="pt-3 border-t border-slate-800 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Test() {
   const { id } = useParams<{ id: string }>()
   const [test, setTest] = useState<Test | null>(null)
@@ -177,10 +387,13 @@ export function Test() {
   const [liveTitle, setLiveTitle] = useState<string | null>(null)
   const [liveStatusCode, setLiveStatusCode] = useState<number | null>(null)
   const [liveDurationMs, setLiveDurationMs] = useState<number | null>(null)
-  const [activeTab, setActiveTab] = useState<'telemetry' | 'actions' | 'elements' | 'signals' | 'state'>('telemetry')
+  const [activeTab, setActiveTab] = useState<'telemetry' | 'findings' | 'actions' | 'elements' | 'signals' | 'state'>('telemetry')
   const [elementFilter, setElementFilter] = useState<string>('all')
+  const [findingCategoryFilter, setFindingCategoryFilter] = useState<string>('all')
 
   const [liveActions, setLiveActions] = useState<ActionItem[]>([])
+  const [liveFindings, setLiveFindings] = useState<Finding[]>([])
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null)
   const [liveElements, setLiveElements] = useState<InteractiveElement[]>([])
   const [liveConsoleMessages, setLiveConsoleMessages] = useState<ConsoleMessage[]>([])
   const [liveJsExceptions, setLiveJsExceptions] = useState<JavaScriptException[]>([])
@@ -205,6 +418,7 @@ export function Test() {
         if (data.status_code) setLiveStatusCode(data.status_code)
         if (data.duration_ms) setLiveDurationMs(data.duration_ms)
         if (data.actions) setLiveActions(data.actions)
+        if (data.findings) setLiveFindings(data.findings)
 
         if (data.observations && data.observations.length > 0) {
           setDiscoveredStatesCount(data.observations.length)
@@ -260,6 +474,38 @@ export function Test() {
       if (last.viewport) setLiveViewport(last.viewport)
       if (last.page_dimensions) setLiveDimensions(last.page_dimensions)
       setDiscoveredStatesCount((prev) => prev + 1)
+    } else if (last.type === 'finding') {
+      const findingId = last.id || `find-${Date.now()}`
+      const incomingFinding: Finding = {
+        id: findingId,
+        severity: last.severity || 'medium',
+        category: last.category || 'other',
+        status: last.status || 'potential',
+        confidence: last.confidence ?? 0.85,
+        title: last.title || 'Detected Finding',
+        description: last.description || '',
+        evidence: last.evidence || [],
+        reproduction: last.reproduction,
+        recommendation: last.recommendation,
+        fingerprint: last.fingerprint,
+        timestamp: new Date().toISOString(),
+      }
+      setLiveFindings((prev) => {
+        const matchIdx = prev.findIndex(
+          (f) => (incomingFinding.fingerprint && f.fingerprint === incomingFinding.fingerprint) || f.id === incomingFinding.id
+        )
+        if (matchIdx >= 0) {
+          const updated = [...prev]
+          const existing = updated[matchIdx]
+          updated[matchIdx] = {
+            ...existing,
+            ...incomingFinding,
+            evidence: [...(existing.evidence || []), ...(incomingFinding.evidence || [])],
+          }
+          return updated
+        }
+        return [...prev, incomingFinding]
+      })
     } else if (last.type === 'screenshot' && last.url) {
       setLiveScreenshotUrl(`${last.url}?t=${Date.now()}`)
     } else if (last.type === 'status') {
@@ -318,9 +564,6 @@ export function Test() {
 
   const screenshotSrc = liveScreenshotUrl || test.screenshot_url
 
-  const findings = events.filter((e) => e.type === 'finding')
-  const allFindings = (test.findings && test.findings.length > 0) ? test.findings : findings
-
   // Filter elements
   const filteredElements = liveElements.filter((el) => {
     if (elementFilter === 'all') return true
@@ -329,6 +572,14 @@ export function Test() {
     if (elementFilter === 'inputs') return el.type.startsWith('input') || el.type === 'textarea' || el.type === 'select'
     return true
   })
+
+  // Filter findings
+  const filteredFindings = liveFindings.filter((f) => {
+    if (findingCategoryFilter === 'all') return true
+    return f.category === findingCategoryFilter
+  })
+
+  const uniqueCategories = Array.from(new Set(liveFindings.map((f) => f.category))).filter(Boolean)
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -398,15 +649,15 @@ export function Test() {
           <Stat label="Actions Executed" value={liveActions.length} />
           <Stat label="States Discovered" value={discoveredStatesCount || 1} />
           <Stat label="Elements in State" value={liveElements.length} />
-          <Stat label="Findings Detected" value={allFindings.length} />
+          <Stat label="Findings Detected" value={liveFindings.length} />
         </div>
       </div>
 
       {/* Observation Tabs Bar */}
-      <div className="flex items-center gap-2 border-b mb-6 pb-2" style={{ borderColor: '#1e1e2e' }}>
+      <div className="flex items-center gap-2 border-b mb-6 pb-2 overflow-x-auto" style={{ borderColor: '#1e1e2e' }}>
         <button
           onClick={() => setActiveTab('telemetry')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
             activeTab === 'telemetry'
               ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
               : 'text-slate-400 hover:text-slate-200'
@@ -415,8 +666,18 @@ export function Test() {
           Viewport & Live Stream
         </button>
         <button
+          onClick={() => setActiveTab('findings')}
+          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
+            activeTab === 'findings'
+              ? 'bg-red-600/20 text-red-400 border border-red-500/40'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Detected Findings ({liveFindings.length})
+        </button>
+        <button
           onClick={() => setActiveTab('actions')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
             activeTab === 'actions'
               ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
               : 'text-slate-400 hover:text-slate-200'
@@ -426,7 +687,7 @@ export function Test() {
         </button>
         <button
           onClick={() => setActiveTab('elements')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
             activeTab === 'elements'
               ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
               : 'text-slate-400 hover:text-slate-200'
@@ -436,7 +697,7 @@ export function Test() {
         </button>
         <button
           onClick={() => setActiveTab('signals')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
             activeTab === 'signals'
               ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
               : 'text-slate-400 hover:text-slate-200'
@@ -446,7 +707,7 @@ export function Test() {
         </button>
         <button
           onClick={() => setActiveTab('state')}
-          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors shrink-0 ${
             activeTab === 'state'
               ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
               : 'text-slate-400 hover:text-slate-200'
@@ -543,7 +804,90 @@ export function Test() {
         </div>
       )}
 
-      {/* TAB 2: Executed Actions */}
+      {/* TAB 2: Detected Findings */}
+      {activeTab === 'findings' && (
+        <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
+          <div className="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2" style={{ borderColor: '#1e1e2e' }}>
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
+              Detected Issues & Findings ({filteredFindings.length})
+            </span>
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => setFindingCategoryFilter('all')}
+                className={`px-2.5 py-1 rounded text-xs font-mono capitalize transition-colors ${
+                  findingCategoryFilter === 'all'
+                    ? 'bg-red-600 text-white font-semibold'
+                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                All
+              </button>
+              {uniqueCategories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setFindingCategoryFilter(cat)}
+                  className={`px-2.5 py-1 rounded text-xs font-mono capitalize transition-colors ${
+                    findingCategoryFilter === cat
+                      ? 'bg-red-600 text-white font-semibold'
+                      : 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="max-h-[550px] overflow-y-auto">
+            {filteredFindings.length === 0 ? (
+              <div className="p-8 text-center text-xs font-mono text-slate-500">
+                No issues detected matching the selected filter.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/60">
+                {filteredFindings.map((f, i) => (
+                  <div
+                    key={f.id || i}
+                    onClick={() => setSelectedFinding(f)}
+                    className="p-4 hover:bg-slate-900/50 cursor-pointer transition-colors space-y-2 group"
+                  >
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <FindingSeverityBadge severity={f.severity} />
+                        <FindingStatusBadge status={f.status} />
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 uppercase">
+                          {f.category}
+                        </span>
+                        {f.confidence !== undefined && (
+                          <span className="text-[10px] font-mono text-indigo-400">
+                            {(f.confidence * 100).toFixed(0)}% conf
+                          </span>
+                        )}
+                        <span className="text-xs font-mono text-slate-100 font-semibold group-hover:text-indigo-300 transition-colors">
+                          {f.title}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500 group-hover:text-slate-300">
+                        Inspect Evidence ({f.evidence?.length || 0}) ↗
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-400 font-sans line-clamp-2">{f.description}</p>
+
+                    {f.recommendation && (
+                      <p className="text-[11px] text-amber-300/80 font-mono line-clamp-1">
+                        💡 {f.recommendation}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Executed Actions */}
       {activeTab === 'actions' && (
         <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
           <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: '#1e1e2e' }}>
@@ -604,7 +948,7 @@ export function Test() {
         </div>
       )}
 
-      {/* TAB 3: Interactive Elements */}
+      {/* TAB 4: Interactive Elements */}
       {activeTab === 'elements' && (
         <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
           <div className="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2" style={{ borderColor: '#1e1e2e' }}>
@@ -678,7 +1022,7 @@ export function Test() {
         </div>
       )}
 
-      {/* TAB 4: Browser Signals */}
+      {/* TAB 5: Browser Signals */}
       {activeTab === 'signals' && (
         <div className="space-y-6 mb-6">
           {/* Console Messages */}
@@ -751,7 +1095,7 @@ export function Test() {
         </div>
       )}
 
-      {/* TAB 5: State & Fingerprint */}
+      {/* TAB 6: State & Fingerprint */}
       {activeTab === 'state' && (
         <div className="rounded-lg border p-6 mb-6 space-y-4" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
           <div>
@@ -777,34 +1121,50 @@ export function Test() {
         </div>
       )}
 
-      {/* Findings Section */}
-      {allFindings.length > 0 && (
-        <div className="mt-6">
-          <h2 className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold mb-3">
-            Detected Findings ({allFindings.length})
-          </h2>
+      {/* Overview Findings Section (always visible summary below tabs) */}
+      {liveFindings.length > 0 && activeTab !== 'findings' && (
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
+              Detected Findings ({liveFindings.length})
+            </h2>
+            <button
+              onClick={() => setActiveTab('findings')}
+              className="text-xs font-mono text-indigo-400 hover:underline"
+            >
+              View All in Findings Tab →
+            </button>
+          </div>
           <div className="space-y-2">
-            {allFindings.map((f, i) => (
+            {liveFindings.slice(0, 5).map((f, i) => (
               <div
-                key={i}
-                className="rounded border px-4 py-3"
+                key={f.id || i}
+                onClick={() => setSelectedFinding(f)}
+                className="rounded border px-4 py-3 cursor-pointer hover:border-slate-700 transition-colors"
                 style={{ background: '#111118', borderColor: '#1e1e2e' }}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className="text-xs font-mono font-semibold uppercase"
-                    style={{ color: SEVERITY_COLORS[f.severity ?? 'info'] }}
-                  >
-                    {f.severity}
-                  </span>
-                  <span className="text-xs font-mono text-slate-400">{f.category}</span>
-                  {f.title && <span className="text-xs font-mono text-slate-300 font-semibold">— {f.title}</span>}
+                <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <FindingSeverityBadge severity={f.severity} />
+                    <FindingStatusBadge status={f.status} />
+                    <span className="text-xs font-mono text-slate-400">{f.category}</span>
+                    <span className="text-xs font-mono text-slate-200 font-semibold">— {f.title}</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-indigo-400">Click to inspect ↗</span>
                 </div>
-                <p className="text-sm text-slate-300">{f.description}</p>
+                <p className="text-xs text-slate-300 font-sans line-clamp-1">{f.description}</p>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {/* Interactive Modal Drawer */}
+      {selectedFinding && (
+        <FindingDetailModal
+          finding={selectedFinding}
+          onClose={() => setSelectedFinding(null)}
+        />
       )}
     </div>
   )

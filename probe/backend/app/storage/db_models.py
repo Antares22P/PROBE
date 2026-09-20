@@ -128,10 +128,16 @@ class FindingModel(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     test_id: Mapped[str] = mapped_column(ForeignKey("tests.id"), nullable=False)
-    severity: Mapped[str] = mapped_column(String(16), default="info")
-    category: Mapped[str] = mapped_column(String(64), default="general")
+    severity: Mapped[str] = mapped_column(String(16), default="medium")
+    category: Mapped[str] = mapped_column(String(64), default="other")
+    status: Mapped[str] = mapped_column(String(32), default="potential")
+    confidence: Mapped[float] = mapped_column(default=0.8)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[list] = mapped_column(JSON, default=list)
+    reproduction: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     evidence_ids: Mapped[list] = mapped_column(JSON, default=list)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

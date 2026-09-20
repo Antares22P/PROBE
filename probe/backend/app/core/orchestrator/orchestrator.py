@@ -137,19 +137,39 @@ class Orchestrator:
                 all_findings.extend(findings)
 
                 for finding in findings:
+                    category_val = finding.category.value if hasattr(finding.category, "value") else str(finding.category)
+                    severity_val = finding.severity.value if hasattr(finding.severity, "value") else str(finding.severity)
+                    status_val = finding.status.value if hasattr(finding.status, "value") else str(finding.status)
+
                     finding_model = FindingModel(
+                        id=finding.id,
                         test_id=self._session.id,
-                        severity=finding.severity.value,
-                        category=finding.category,
+                        severity=severity_val,
+                        category=category_val,
+                        status=status_val,
+                        confidence=finding.confidence,
                         title=finding.title,
                         description=finding.description,
+                        evidence=finding.evidence,
+                        reproduction=finding.reproduction,
+                        recommendation=finding.recommendation,
+                        fingerprint=finding.fingerprint,
+                        timestamp=finding.timestamp,
                     )
                     await self._repo.add_finding(finding_model)
                     await self._emit("finding", {
-                        "severity": finding.severity.value,
-                        "category": finding.category,
+                        "id": finding.id,
+                        "severity": severity_val,
+                        "category": category_val,
+                        "status": status_val,
+                        "confidence": finding.confidence,
                         "title": finding.title,
                         "description": finding.description,
+                        "evidence": finding.evidence,
+                        "reproduction": finding.reproduction,
+                        "recommendation": finding.recommendation,
+                        "fingerprint": finding.fingerprint,
+                        "timestamp": finding.timestamp.isoformat(),
                     })
 
             await self._emit("status", {"status": "running", "message": "Analyzing exploration findings..."})

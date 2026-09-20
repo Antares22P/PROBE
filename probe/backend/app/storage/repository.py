@@ -140,6 +140,29 @@ class TestRepository:
         except Exception as exc:
             raise DatabaseError(f"Failed to get findings for test {test_id}: {exc}") from exc
 
+    async def get_finding_by_fingerprint(
+        self, test_id: str, fingerprint: str
+    ) -> Optional[FindingModel]:
+        try:
+            result = await self._db.execute(
+                select(FindingModel)
+                .where(
+                    FindingModel.test_id == test_id,
+                    FindingModel.fingerprint == fingerprint,
+                )
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get finding by fingerprint: {exc}") from exc
+
+    async def update_finding(self, finding: FindingModel) -> FindingModel:
+        try:
+            await self._db.flush()
+            return finding
+        except Exception as exc:
+            raise DatabaseError(f"Failed to update finding: {exc}") from exc
+
     async def get_observations(self, test_id: str) -> list[ObservationModel]:
         try:
             result = await self._db.execute(

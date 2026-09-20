@@ -81,12 +81,39 @@ export interface Observation {
   timestamp: string
 }
 
+export type FindingCategory =
+  | 'functional'
+  | 'network'
+  | 'javascript'
+  | 'crash'
+  | 'performance'
+  | 'ui'
+  | 'ux'
+  | 'security'
+  | 'accessibility'
+  | 'other'
+
+export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info'
+
+export type FindingStatus =
+  | 'potential'
+  | 'investigating'
+  | 'confirmed'
+  | 'unconfirmed'
+  | 'dismissed'
+
 export interface Finding {
   id: string
-  severity: string
-  category: string
+  severity: FindingSeverity | string
+  category: FindingCategory | string
+  status: FindingStatus | string
+  confidence?: number
   title: string
   description: string
+  evidence?: Array<Record<string, any>>
+  reproduction?: Record<string, any> | null
+  recommendation?: string | null
+  fingerprint?: string | null
   timestamp: string
 }
 
@@ -121,6 +148,7 @@ export interface SSEEvent {
     | 'action_completed'
     | 'action_failed'
     | 'error'
+  id?: string
   status?: string
   message?: string
   url?: string
@@ -149,6 +177,10 @@ export interface SSEEvent {
   description?: string | null
   severity?: string
   category?: string
+  confidence?: number
+  evidence?: Array<Record<string, any>>
+  reproduction?: Record<string, any> | null
+  recommendation?: string | null
   actions_count?: number
   states_count?: number
   findings_count?: number

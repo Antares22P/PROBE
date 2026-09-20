@@ -62,8 +62,14 @@ class FindingResponse(BaseModel):
     id: str
     severity: str
     category: str
+    status: str = "potential"
+    confidence: float = 0.8
     title: str
-    description: str
+    description: str = ""
+    evidence: list[dict[str, Any]] = []
+    reproduction: Optional[dict[str, Any]] = None
+    recommendation: Optional[str] = None
+    fingerprint: Optional[str] = None
     timestamp: datetime
 
     model_config = {"from_attributes": True}
