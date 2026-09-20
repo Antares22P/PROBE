@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useTestEvents } from '../lib/sse'
-import type { Test, SSEEvent, InteractiveElement, ConsoleMessage, JavaScriptException, FailedRequest } from '../types'
+import type {
+  Test,
+  SSEEvent,
+  InteractiveElement,
+  ConsoleMessage,
+  JavaScriptException,
+  FailedRequest,
+  ActionItem,
+} from '../types'
 
 const STATUS_COLORS: Record<string, string> = {
   pending: '#6b7280',
@@ -55,10 +63,13 @@ function StatusCodeBadge({ code }: { code?: number | null }) {
 }
 
 function EventRow({ event }: { event: SSEEvent }) {
+  const timeStr = new Date().toLocaleTimeString([], { hour12: false })
+
   if (event.type === 'connected') {
     return (
       <div className="text-xs font-mono text-slate-500 py-0.5">
-        — Connected to PROBE live stream
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
+        — Connected to PROBE autonomous stream
       </div>
     )
   }
@@ -67,10 +78,49 @@ function EventRow({ event }: { event: SSEEvent }) {
     const color = STATUS_COLORS[event.status ?? ''] ?? '#6b7280'
     return (
       <div className="text-xs font-mono py-0.5" style={{ color }}>
-        [{event.status?.toUpperCase()}] {event.message}
-        {event.findings_count !== undefined && (
-          <span className="text-slate-400 ml-2">({event.findings_count} finding{event.findings_count !== 1 ? 's' : ''})</span>
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
+        <span className="font-semibold">[{event.status?.toUpperCase()}]</span> {event.message}
+        {event.actions_count !== undefined && (
+          <span className="text-slate-400 ml-2">
+            ({event.actions_count} action{event.actions_count !== 1 ? 's' : ''}, {event.states_count ?? 0} states)
+          </span>
         )}
+      </div>
+    )
+  }
+
+  if (event.type === 'action_start') {
+    return (
+      <div className="text-xs font-mono text-amber-300/90 py-0.5">
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
+        <span className="text-amber-400 font-semibold">[ACTION:START]</span>{' '}
+        <span>{event.description || `Executing ${event.action_type}`}</span>
+      </div>
+    )
+  }
+
+  if (event.type === 'action_completed') {
+    return (
+      <div className="text-xs font-mono text-emerald-300 py-0.5">
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
+        <span className="text-emerald-400 font-semibold">[ACTION:DONE]</span>{' '}
+        <span>{event.description}</span>
+        {event.duration_ms !== undefined && event.duration_ms !== null && (
+          <span className="text-slate-400 ml-2">({event.duration_ms}ms)</span>
+        )}
+        {event.new_url && (
+          <span className="text-slate-400 ml-2">→ {event.new_url}</span>
+        )}
+      </div>
+    )
+  }
+
+  if (event.type === 'action_failed') {
+    return (
+      <div className="text-xs font-mono text-red-400 py-0.5">
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
+        <span className="text-red-500 font-semibold">[ACTION:FAIL]</span>{' '}
+        <span>{event.description}</span>
       </div>
     )
   }
@@ -78,18 +128,16 @@ function EventRow({ event }: { event: SSEEvent }) {
   if (event.type === 'observation') {
     return (
       <div className="text-xs font-mono text-slate-300 py-0.5">
-        <span className="text-indigo-400 font-semibold">[OBS]</span>{' '}
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
+        <span className="text-indigo-400 font-semibold">[OBSERVE]</span>{' '}
         <span className="text-slate-100">{event.url || event.requested_url}</span>
         {event.title && <span className="text-slate-400"> — "{event.title}"</span>}
         {event.status_code && (
           <span className="text-emerald-400 ml-2">({event.status_code})</span>
         )}
-        {event.duration_ms !== undefined && event.duration_ms !== null && (
-          <span className="text-slate-400 ml-2">in {event.duration_ms}ms</span>
-        )}
         {event.element_count !== undefined && (
-          <span className="text-slate-500 ml-2">
-            · {event.element_count} elements
+          <span className="text-slate-400 ml-2">
+            · Discovered {event.element_count} interactive elements
           </span>
         )}
       </div>
@@ -98,8 +146,9 @@ function EventRow({ event }: { event: SSEEvent }) {
 
   if (event.type === 'screenshot') {
     return (
-      <div className="text-xs font-mono text-emerald-400 py-0.5">
-        <span>[SCREENSHOT]</span> Viewport captured successfully
+      <div className="text-xs font-mono text-emerald-400/80 py-0.5">
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
+        <span>[SCREENSHOT]</span> Captured state snapshot
       </div>
     )
   }
@@ -108,6 +157,7 @@ function EventRow({ event }: { event: SSEEvent }) {
     const color = SEVERITY_COLORS[event.severity ?? 'info'] ?? '#6b7280'
     return (
       <div className="text-xs font-mono py-0.5">
+        <span className="text-slate-600 mr-2">[{timeStr}]</span>
         <span style={{ color }}>[{event.severity?.toUpperCase()}]</span>{' '}
         <span className="text-slate-300 font-medium">{event.category}: </span>
         <span className="text-slate-200">{event.description}</span>
@@ -127,9 +177,10 @@ export function Test() {
   const [liveTitle, setLiveTitle] = useState<string | null>(null)
   const [liveStatusCode, setLiveStatusCode] = useState<number | null>(null)
   const [liveDurationMs, setLiveDurationMs] = useState<number | null>(null)
-  const [activeTab, setActiveTab] = useState<'telemetry' | 'elements' | 'signals' | 'state'>('telemetry')
+  const [activeTab, setActiveTab] = useState<'telemetry' | 'actions' | 'elements' | 'signals' | 'state'>('telemetry')
   const [elementFilter, setElementFilter] = useState<string>('all')
 
+  const [liveActions, setLiveActions] = useState<ActionItem[]>([])
   const [liveElements, setLiveElements] = useState<InteractiveElement[]>([])
   const [liveConsoleMessages, setLiveConsoleMessages] = useState<ConsoleMessage[]>([])
   const [liveJsExceptions, setLiveJsExceptions] = useState<JavaScriptException[]>([])
@@ -137,6 +188,7 @@ export function Test() {
   const [liveFingerprint, setLiveFingerprint] = useState<string | null>(null)
   const [liveViewport, setLiveViewport] = useState<{ width: number; height: number } | null>(null)
   const [liveDimensions, setLiveDimensions] = useState<{ width: number; height: number } | null>(null)
+  const [discoveredStatesCount, setDiscoveredStatesCount] = useState<number>(0)
 
   const { events } = useTestEvents(id ?? null)
   const logRef = useRef<HTMLDivElement>(null)
@@ -152,8 +204,10 @@ export function Test() {
         if (data.page_title) setLiveTitle(data.page_title)
         if (data.status_code) setLiveStatusCode(data.status_code)
         if (data.duration_ms) setLiveDurationMs(data.duration_ms)
+        if (data.actions) setLiveActions(data.actions)
 
         if (data.observations && data.observations.length > 0) {
+          setDiscoveredStatesCount(data.observations.length)
           const latest = data.observations[data.observations.length - 1]
           if (latest.elements_data) setLiveElements(latest.elements_data)
           if (latest.console_messages) setLiveConsoleMessages(latest.console_messages)
@@ -178,7 +232,21 @@ export function Test() {
     if (!events.length) return
     const last = events[events.length - 1]
 
-    if (last.type === 'observation') {
+    if (last.type === 'action_completed' || last.type === 'action_failed') {
+      const newAction: ActionItem = {
+        id: `act-${Date.now()}`,
+        action_type: last.action_type || 'UNKNOWN',
+        target: last.target,
+        value: last.value,
+        description: last.description,
+        success: last.type === 'action_completed',
+        error: last.error,
+        duration_ms: last.duration_ms,
+        timestamp: new Date().toISOString(),
+      }
+      setLiveActions((prev) => [...prev, newAction])
+      if (last.new_url) setLiveCurrentUrl(last.new_url)
+    } else if (last.type === 'observation') {
       if (last.url) setLiveCurrentUrl(last.url)
       if (last.title) setLiveTitle(last.title)
       if (last.status_code) setLiveStatusCode(last.status_code)
@@ -191,6 +259,7 @@ export function Test() {
       if (last.fingerprint) setLiveFingerprint(last.fingerprint)
       if (last.viewport) setLiveViewport(last.viewport)
       if (last.page_dimensions) setLiveDimensions(last.page_dimensions)
+      setDiscoveredStatesCount((prev) => prev + 1)
     } else if (last.type === 'screenshot' && last.url) {
       setLiveScreenshotUrl(`${last.url}?t=${Date.now()}`)
     } else if (last.type === 'status') {
@@ -199,6 +268,7 @@ export function Test() {
       if (last.status_code) setLiveStatusCode(last.status_code)
       if (last.duration_ms) setLiveDurationMs(last.duration_ms)
       if (last.screenshot_url) setLiveScreenshotUrl(`${last.screenshot_url}?t=${Date.now()}`)
+      if (last.states_count !== undefined) setDiscoveredStatesCount(last.states_count)
 
       if (id) {
         api.getTest(id).then(setTest).catch(() => {})
@@ -325,9 +395,9 @@ export function Test() {
         {/* Telemetry Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mt-6 pt-5 border-t" style={{ borderColor: '#1e1e2e' }}>
           <Stat label="Status" value={test.status.toUpperCase()} />
-          <Stat label="Navigation Duration" value={displayDuration} />
-          <Stat label="Interactive Elements" value={liveElements.length} />
-          <Stat label="Browser Signals" value={liveConsoleMessages.length + liveJsExceptions.length + liveFailedRequests.length} />
+          <Stat label="Actions Executed" value={liveActions.length} />
+          <Stat label="States Discovered" value={discoveredStatesCount || 1} />
+          <Stat label="Elements in State" value={liveElements.length} />
           <Stat label="Findings Detected" value={allFindings.length} />
         </div>
       </div>
@@ -343,6 +413,16 @@ export function Test() {
           }`}
         >
           Viewport & Live Stream
+        </button>
+        <button
+          onClick={() => setActiveTab('actions')}
+          className={`px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+            activeTab === 'actions'
+              ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Executed Actions ({liveActions.length})
         </button>
         <button
           onClick={() => setActiveTab('elements')}
@@ -420,7 +500,7 @@ export function Test() {
               ) : isActive ? (
                 <div className="text-center py-12">
                   <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                  <p className="text-xs font-mono text-slate-400">Launching Chromium & capturing viewport...</p>
+                  <p className="text-xs font-mono text-slate-400">Autonomous exploration in progress...</p>
                 </div>
               ) : (
                 <div className="text-center py-12">
@@ -430,7 +510,7 @@ export function Test() {
             </div>
           </div>
 
-          {/* Live Event Log */}
+          {/* Live Event Stream */}
           <div
             className="rounded-lg border flex flex-col"
             style={{ background: '#0d0d15', borderColor: '#1e1e2e' }}
@@ -440,12 +520,12 @@ export function Test() {
               style={{ borderColor: '#1e1e2e', background: '#111118' }}
             >
               <span className="text-xs font-mono text-slate-400 font-semibold uppercase tracking-wider">
-                Execution Telemetry Log
+                Autonomous Action Stream
               </span>
               {isActive && (
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                  <span className="text-xs font-mono text-indigo-400">live</span>
+                  <span className="text-xs font-mono text-indigo-400">exploring</span>
                 </span>
               )}
             </div>
@@ -454,7 +534,7 @@ export function Test() {
               className="p-4 max-h-[380px] min-h-[280px] overflow-y-auto font-mono space-y-1.5"
             >
               {events.length === 0 ? (
-                <p className="text-xs font-mono text-slate-600">Connecting to test lifecycle events...</p>
+                <p className="text-xs font-mono text-slate-600">Connecting to autonomous test execution...</p>
               ) : (
                 events.map((e, i) => <EventRow key={i} event={e} />)
               )}
@@ -463,12 +543,73 @@ export function Test() {
         </div>
       )}
 
-      {/* TAB 2: Interactive Elements */}
+      {/* TAB 2: Executed Actions */}
+      {activeTab === 'actions' && (
+        <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
+          <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: '#1e1e2e' }}>
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
+              Executed Action History ({liveActions.length})
+            </span>
+          </div>
+          <div className="max-h-[500px] overflow-y-auto">
+            {liveActions.length === 0 ? (
+              <div className="p-8 text-center text-xs font-mono text-slate-500">
+                No actions executed yet.
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="sticky top-0 bg-[#0d0d15] border-b" style={{ borderColor: '#1e1e2e' }}>
+                  <tr className="text-slate-400">
+                    <th className="px-4 py-2.5">#</th>
+                    <th className="px-4 py-2.5">Type</th>
+                    <th className="px-4 py-2.5">Description</th>
+                    <th className="px-4 py-2.5">Target / Selector</th>
+                    <th className="px-4 py-2.5">Duration</th>
+                    <th className="px-4 py-2.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: '#1a1a28' }}>
+                  {liveActions.map((act, i) => (
+                    <tr key={i} className="hover:bg-slate-900/40 transition-colors">
+                      <td className="px-4 py-2.5 text-slate-500">{i + 1}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/40">
+                          {act.action_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-200 font-medium">
+                        {act.description || act.value || '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-400 max-w-xs truncate" title={act.target || ''}>
+                        {act.target || '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-400">
+                        {act.duration_ms !== null && act.duration_ms !== undefined ? `${act.duration_ms}ms` : '—'}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {act.success ? (
+                          <span className="text-emerald-400 font-semibold">SUCCESS</span>
+                        ) : (
+                          <span className="text-red-400 font-semibold" title={act.error || ''}>
+                            FAILED
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Interactive Elements */}
       {activeTab === 'elements' && (
         <div className="rounded-lg border mb-6 overflow-hidden" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
           <div className="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2" style={{ borderColor: '#1e1e2e' }}>
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">
-              Discovered UI Elements ({filteredElements.length})
+              Discovered UI Elements in Current State ({filteredElements.length})
             </span>
             <div className="flex gap-2">
               {['all', 'links', 'buttons', 'inputs'].map((filter) => (
@@ -537,7 +678,7 @@ export function Test() {
         </div>
       )}
 
-      {/* TAB 3: Browser Signals */}
+      {/* TAB 4: Browser Signals */}
       {activeTab === 'signals' && (
         <div className="space-y-6 mb-6">
           {/* Console Messages */}
@@ -610,7 +751,7 @@ export function Test() {
         </div>
       )}
 
-      {/* TAB 4: State & Fingerprint */}
+      {/* TAB 5: State & Fingerprint */}
       {activeTab === 'state' && (
         <div className="rounded-lg border p-6 mb-6 space-y-4" style={{ background: '#111118', borderColor: '#1e1e2e' }}>
           <div>

@@ -162,8 +162,23 @@ class Action(BaseModel):
     type: ActionType
     target: Optional[str] = None  # selector or element id
     value: Optional[str] = None  # e.g. text to type, URL to navigate
+    description: Optional[str] = None  # Human-readable summary of the action
     timestamp: datetime = Field(default_factory=_now)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ActionResult(BaseModel):
+    """The result of executing an action."""
+
+    id: str = Field(default_factory=_uuid)
+    action: Action
+    success: bool = True
+    error: Optional[str] = None
+    duration_ms: float = 0.0
+    before_state_fingerprint: Optional[str] = None
+    after_state_fingerprint: Optional[str] = None
+    timestamp: datetime = Field(default_factory=_now)
+
 
 
 # ---------------------------------------------------------------------------
@@ -306,11 +321,15 @@ class TestConfig(BaseModel):
     """Configuration for a test run."""
 
     max_actions: int = 50
-    max_depth: int = 3
-    timeout_seconds: int = 300
+    max_states: int = 25
+    max_depth: int = 5
+    max_duration_seconds: int = 180
+    timeout_seconds: int = 180
     headless: bool = True
     viewport_width: int = 1280
     viewport_height: int = 720
+    allowed_domains: list[str] = Field(default_factory=list)
+
 
 
 class TestSession(BaseModel):

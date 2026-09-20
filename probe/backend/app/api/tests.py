@@ -44,6 +44,20 @@ class CreateTestRequest(BaseModel):
     config: Optional[dict] = None
 
 
+class ActionResponse(BaseModel):
+    id: str
+    action_type: str
+    target: Optional[str] = None
+    value: Optional[str] = None
+    description: Optional[str] = None
+    success: bool = True
+    error: Optional[str] = None
+    duration_ms: Optional[float] = None
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class FindingResponse(BaseModel):
     id: str
     severity: str
@@ -100,8 +114,10 @@ class TestDetailResponse(TestResponse):
     duration_ms: Optional[float] = None
     status_code: Optional[int] = None
     screenshot_url: Optional[str] = None
+    actions: list[ActionResponse] = []
     observations: list[ObservationResponse] = []
     findings: list[FindingResponse] = []
+
 
 
 def _to_response(t: TestModel) -> TestResponse:
@@ -176,6 +192,7 @@ async def get_test(
         raise HTTPException(status_code=404, detail=f"Test {test_id} not found")
 
     observations = await repo.get_observations(test_id)
+    actions = await repo.get_actions(test_id)
     findings = await repo.get_findings(test_id)
     latest_obs = observations[-1] if observations else None
     latest_ev = await repo.get_latest_screenshot_evidence(test_id)
@@ -210,6 +227,7 @@ async def get_test(
         duration_ms=duration_ms,
         status_code=latest_obs.status_code if latest_obs else None,
         screenshot_url=screenshot_url,
+        actions=[ActionResponse.model_validate(a) for a in actions],
         observations=[ObservationResponse.model_validate(o) for o in observations],
         findings=[FindingResponse.model_validate(f) for f in findings],
     )

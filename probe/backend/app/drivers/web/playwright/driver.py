@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import urllib.parse
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -180,6 +181,15 @@ class WebTestDriver(TestDriver):
                     error=f"Invalid URL protocol: '{url}'. Must start with http:// or https://",
                 )
 
+            # Safely clean and normalize data:text/html URLs
+            if url_clean.startswith("data:text/html"):
+                if "," in url_clean:
+                    header, body = url_clean.split(",", 1)
+                    raw_body = urllib.parse.unquote(body)
+                    url_clean = f"data:text/html;charset=utf-8,{urllib.parse.quote(raw_body)}"
+
+
+
             # Navigation timeout
             timeout_ms = (
                 min(self._config.timeout_seconds * 1000, 60000)
@@ -345,10 +355,10 @@ class WebTestDriver(TestDriver):
                                 if (labelFor && labelFor.textContent) return labelFor.textContent.trim();
                             } catch (e) {}
                         }
-                        if (el.placeholder) return el.placeholder.trim();
-                        if (el.title) return el.title.trim();
+                        if (typeof el.placeholder === 'string' && el.placeholder) return el.placeholder.trim();
+                        if (typeof el.title === 'string' && el.title) return el.title.trim();
                         if (el.getAttribute('alt')) return el.getAttribute('alt').trim();
-                        if (el.name) return el.name.trim();
+                        if (typeof el.name === 'string' && el.name) return el.name.trim();
                         return '';
                     }
 
@@ -360,7 +370,7 @@ class WebTestDriver(TestDriver):
                                 return `#${el.id}`;
                             }
                         }
-                        if (el.name && ['input', 'select', 'textarea'].includes(el.tagName.toLowerCase())) {
+                        if (typeof el.name === 'string' && el.name && ['input', 'select', 'textarea'].includes(el.tagName.toLowerCase())) {
                             try {
                                 return `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]`;
                             } catch (e) {}

@@ -231,7 +231,7 @@ async def test_full_session_lifecycle_end_to_end(test_session):
         # Check saved observations
         obs_list = await repo.get_observations(test_session.id)
         assert len(obs_list) >= 1
-        latest_obs = obs_list[0]
+        latest_obs = obs_list[-1]
         assert latest_obs.title == "PROBE Real Browser Test Page"
         assert latest_obs.screenshot_path is not None
         assert os.path.exists(latest_obs.screenshot_path)

@@ -47,6 +47,18 @@ export interface FailedRequest {
   timestamp?: string
 }
 
+export interface ActionItem {
+  id: string
+  action_type: string
+  target?: string | null
+  value?: string | null
+  description?: string | null
+  success: boolean
+  error?: string | null
+  duration_ms?: number | null
+  timestamp: string
+}
+
 export interface Observation {
   id: string
   url: string
@@ -93,17 +105,28 @@ export interface Test {
   duration_ms?: number | null
   status_code?: number | null
   screenshot_url?: string | null
+  actions?: ActionItem[]
   observations?: Observation[]
   findings?: Finding[]
 }
 
 export interface SSEEvent {
-  type: 'connected' | 'status' | 'observation' | 'finding' | 'screenshot' | 'error'
+  type:
+    | 'connected'
+    | 'status'
+    | 'observation'
+    | 'finding'
+    | 'screenshot'
+    | 'action_start'
+    | 'action_completed'
+    | 'action_failed'
+    | 'error'
   status?: string
   message?: string
   url?: string
   requested_url?: string
   current_url?: string
+  new_url?: string
   title?: string
   page_title?: string
   status_code?: number | null
@@ -120,9 +143,14 @@ export interface SSEEvent {
   viewport?: { width: number; height: number } | null
   page_dimensions?: { width: number; height: number } | null
   fingerprint?: string | null
+  action_type?: string
+  target?: string | null
+  value?: string | null
+  description?: string | null
   severity?: string
   category?: string
-  description?: string
+  actions_count?: number
+  states_count?: number
   findings_count?: number
   ai_summary?: string
 }

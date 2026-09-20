@@ -12,10 +12,10 @@ from app.core.models import ApplicationState, TestSession, TestStatus
 from app.decisions.decision_maker import DecisionMaker
 from app.detection.detector import Detector
 from app.drivers.common.base import TestDriver
-from app.exploration.explorer import Explorer
+from app.exploration.engine import ExplorationEngine
 from app.findings.models import Finding
 from app.reproduction.reproducer import Reproducer
-from app.storage.db_models import EvidenceModel, FindingModel, ObservationModel
+from app.storage.db_models import ActionModel, EvidenceModel, FindingModel, ObservationModel
 from app.storage.repository import TestRepository
 from app.utils.errors import DriverError, InternalError
 from app.utils.logging import get_logger, bind_test_id, clear_context
@@ -65,11 +65,33 @@ class Orchestrator:
 
             await self._emit("status", {
                 "status": "running",
-                "message": f"Navigating to {self._session.url} in isolated context...",
+                "message": f"Starting autonomous exploration of {self._session.url}...",
             })
 
-            explorer = Explorer(self._driver, self._session)
-            states = await explorer.explore_page(self._session.url)
+            engine = ExplorationEngine(
+                driver=self._driver,
+                session=self._session,
+                event_callback=self._event_callback,
+            )
+            states, action_results = await engine.explore()
+
+            # Persist executed actions
+            for res in action_results:
+                act = res.action
+                action_model = ActionModel(
+                    id=act.id,
+                    test_id=self._session.id,
+                    action_type=act.type.value,
+                    target=act.target,
+                    value=act.value,
+                    description=act.description,
+                    success=res.success,
+                    error=res.error,
+                    duration_ms=res.duration_ms,
+                    timestamp=res.timestamp,
+                    metadata_=act.metadata,
+                )
+                await self._repo.add_action(action_model)
 
             detector = Detector(self._session.id)
             all_findings: list[Finding] = []
@@ -111,32 +133,6 @@ class Orchestrator:
                     )
                     await self._repo.add_evidence(ev)
 
-                # Broadcast observation event with full telemetry
-                await self._emit("observation", {
-                    "requested_url": state.requested_url or self._session.url,
-                    "url": state.url,
-                    "title": state.title,
-                    "status_code": state.status_code,
-                    "duration_ms": state.duration_ms,
-                    "error": state.error,
-                    "element_count": len(state.elements),
-                    "elements": [e.model_dump() for e in state.elements],
-                    "console_messages": [c.model_dump(mode="json") for c in state.console_messages],
-                    "console_errors": state.console_errors,
-                    "js_exceptions": [j.model_dump(mode="json") for j in state.js_exceptions],
-                    "failed_requests": [f.model_dump(mode="json") for f in state.failed_requests],
-                    "viewport": state.viewport.model_dump() if state.viewport else None,
-                    "page_dimensions": state.page_dimensions.model_dump() if state.page_dimensions else None,
-                    "fingerprint": state.fingerprint,
-                    "screenshot_url": f"/api/tests/{self._session.id}/screenshot" if state.screenshot_path else None,
-                })
-
-                if state.screenshot_path:
-                    await self._emit("screenshot", {
-                        "url": f"/api/tests/{self._session.id}/screenshot",
-                        "path": state.screenshot_path,
-                    })
-
                 findings = detector.detect(state)
                 all_findings.extend(findings)
 
@@ -156,7 +152,7 @@ class Orchestrator:
                         "description": finding.description,
                     })
 
-            await self._emit("status", {"status": "running", "message": "Analyzing findings..."})
+            await self._emit("status", {"status": "running", "message": "Analyzing exploration findings..."})
             ai_summary = await self._ai.analyze_findings(
                 [f.model_dump() for f in all_findings],
                 {"url": self._session.url},
@@ -172,13 +168,19 @@ class Orchestrator:
             await self._repo.update_status(self._session.id, final_status, error_message=err_msg)
             await self._emit("status", {
                 "status": final_status,
-                "message": f"Test {final_status}." if not err_msg else f"Test failed: {err_msg}",
+                "message": (
+                    f"Exploration {final_status}: {len(action_results)} actions executed across {len(states)} states."
+                    if not err_msg
+                    else f"Test failed: {err_msg}"
+                ),
                 "requested_url": self._session.url,
                 "current_url": latest_state.url if latest_state else self._session.url,
                 "page_title": latest_state.title if latest_state else "",
                 "duration_ms": latest_state.duration_ms if latest_state else None,
                 "status_code": latest_state.status_code if latest_state else None,
                 "screenshot_url": f"/api/tests/{self._session.id}/screenshot" if latest_state and latest_state.screenshot_path else None,
+                "actions_count": len(action_results),
+                "states_count": len(states),
                 "findings_count": len(all_findings),
                 "ai_summary": ai_summary,
             })
@@ -188,6 +190,8 @@ class Orchestrator:
                 component="orchestrator",
                 test_id=self._session.id,
                 status=final_status,
+                actions=len(action_results),
+                states=len(states),
                 findings=len(all_findings),
             )
 

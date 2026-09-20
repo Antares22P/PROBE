@@ -65,6 +65,10 @@ class ActionModel(Base):
     action_type: Mapped[str] = mapped_column(String(32), nullable=False)
     target: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    success: Mapped[bool] = mapped_column(default=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 

@@ -86,6 +86,25 @@ class TestRepository:
         except Exception as exc:
             raise DatabaseError(f"Failed to update test status: {exc}") from exc
 
+    async def add_action(self, action: ActionModel) -> ActionModel:
+        try:
+            self._db.add(action)
+            await self._db.flush()
+            return action
+        except Exception as exc:
+            raise DatabaseError(f"Failed to add action: {exc}") from exc
+
+    async def get_actions(self, test_id: str) -> list[ActionModel]:
+        try:
+            result = await self._db.execute(
+                select(ActionModel)
+                .where(ActionModel.test_id == test_id)
+                .order_by(ActionModel.timestamp.asc())
+            )
+            return list(result.scalars().all())
+        except Exception as exc:
+            raise DatabaseError(f"Failed to get actions for test {test_id}: {exc}") from exc
+
     async def add_observation(self, obs: ObservationModel) -> ObservationModel:
         try:
             self._db.add(obs)
