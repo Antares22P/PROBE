@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useTestEvents } from '../lib/sse'
+import { AgentsPanel } from '../components/AgentsPanel'
+import { LiveBrowserView } from '../components/LiveBrowserView'
+import { LiveActivityTimeline } from '../components/LiveActivityTimeline'
+import { AiModelReport } from '../components/AiModelReport'
 import type {
   Test,
   SSEEvent,
@@ -14,6 +18,9 @@ import type {
   ReproductionResult,
   FindingAnalysisResult,
   TestSummaryAnalysis,
+  AgentType,
+  AgentState,
+  BrowserActionEvent,
 } from '../types'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -708,6 +715,18 @@ export function Test() {
   const [screenshotTimestamp, setScreenshotTimestamp] = useState<number>(Date.now())
   const [fullImageModal, setFullImageModal] = useState(false)
 
+  // Live Agent & Browser Action state
+  const [activeAgent, setActiveAgent] = useState<AgentType>('technical')
+  const [agentStates, setAgentStates] = useState<Record<AgentType, AgentState>>({
+    technical: 'exploring',
+    user_behavior: 'waiting',
+    ux_ui: 'waiting',
+    chaos: 'waiting',
+  })
+  const [agentMessage, setAgentMessage] = useState<string>('')
+  const [activeAction, setActiveAction] = useState<BrowserActionEvent | null>(null)
+  const [isActionLoading, setIsActionLoading] = useState<boolean>(false)
+
   // Metrics counters
   const [statesCount, setStatesCount] = useState<number>(0)
   const [actionsCount, setActionsCount] = useState<number>(0)
@@ -719,8 +738,6 @@ export function Test() {
     Array<{ id: string; time: string; type: string; label: string; detail?: string; success?: boolean; color?: string }>
   >([])
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'actions' | 'observations' | 'findings'>('all')
-  const [autoScroll, setAutoScroll] = useState(true)
-  const timelineEndRef = useRef<HTMLDivElement>(null)
 
   // Findings filters
   const [findingSearch, setFindingSearch] = useState('')
@@ -936,8 +953,86 @@ export function Test() {
         ])
       }
 
+      if (event.type === 'agent_status') {
+        const ag = (event.active_agent || event.agent) as AgentType | undefined
+        if (ag) {
+          setActiveAgent(ag)
+        }
+        if (event.agents) {
+          setAgentStates(event.agents)
+        } else if (ag) {
+          setAgentStates((prev) => ({
+            ...prev,
+            [ag]: (event.state as AgentState) || 'exploring',
+          }))
+        }
+        if (event.message) {
+          setAgentMessage(event.message)
+        }
+        setTimelineEvents((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            time: timeStr,
+            type: 'agent',
+            agent: ag,
+            label: `Agent [${(ag || 'AI').toUpperCase()}]: ${event.state || 'active'}`,
+            detail: event.message,
+            color: '#c084fc',
+          },
+        ])
+      }
+
+      if (event.type === 'browser_action') {
+        const actionPayload: BrowserActionEvent = {
+          type: 'browser_action',
+          inspection_id: event.inspection_id,
+          agent: (event.agent as AgentType) || 'technical',
+          action: (event.action as any) || 'click',
+          phase: event.phase || 'targeting',
+          target: event.target,
+          selector: event.selector,
+          x: event.x,
+          y: event.y,
+          target_bounds: event.target_bounds,
+          value: event.value,
+          direction: event.direction,
+          amount: event.amount,
+          reason: event.reason,
+          timestamp: event.timestamp || new Date().toISOString(),
+        }
+        setActiveAction(actionPayload)
+        setIsActionLoading(true)
+        if (event.agent) {
+          const a = event.agent as AgentType
+          setActiveAgent(a)
+          setAgentStates((prev) => ({
+            ...prev,
+            [a]: 'exploring',
+          }))
+        }
+        setTimelineEvents((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            time: timeStr,
+            type: 'action',
+            agent: event.agent,
+            label: event.description || `${(event.action || 'action').toUpperCase()} ${event.target || ''}`,
+            detail: event.value ? `Value: "${event.value}"` : event.reason || undefined,
+            color: '#38bdf8',
+          },
+        ])
+      }
+
+      if (event.type === 'browser_frame') {
+        setScreenshotTimestamp(Date.now())
+        setIsActionLoading(false)
+      }
+
       if (event.type === 'screenshot') {
         setScreenshotTimestamp(Date.now())
+        setIsActionLoading(false)
       }
 
       if (event.type === 'test_analyzed' && event.ai_summary) {
@@ -946,12 +1041,6 @@ export function Test() {
     },
   })
 
-  // Auto-scroll timeline
-  useEffect(() => {
-    if (autoScroll && timelineEndRef.current) {
-      timelineEndRef.current.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [timelineEvents, autoScroll])
 
   const handleCancel = async () => {
     if (!id || cancelling) return
@@ -1031,89 +1120,102 @@ export function Test() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-3.5 py-3 space-y-2.5">
       {/* ------------------------------------------------------------------- */}
       {/* 1. TOP HEADER & METRICS BAR                                         */}
       {/* ------------------------------------------------------------------- */}
-      <div
-        className="rounded-xl border p-5 shadow-xl backdrop-blur-sm"
-        style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
-          <div className="flex flex-wrap items-center gap-3 min-w-0">
+      <div className="bg-[#121216] border border-zinc-800/80 rounded-lg p-3 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-zinc-800/60">
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
             <Link
               to="/history"
-              className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+              className="text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1"
             >
-              ← History
+              ← Test Sessions
             </Link>
-            <span className="text-slate-700">|</span>
+            <span className="text-zinc-700">|</span>
             <StatusBadge status={test?.status || 'pending'} />
-            <div className="min-w-0">
-              <span className="text-xs font-mono text-slate-500 mr-2">Target:</span>
-              <span className="text-sm font-mono font-bold text-slate-100 truncate">{test?.url}</span>
+            <div className="min-w-0 flex items-center gap-1.5">
+              <span className="text-xs font-mono text-zinc-500">Target:</span>
+              <span className="text-xs font-mono font-semibold text-zinc-100 truncate">{test?.url}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {test?.status === 'running' && (
               <button
                 onClick={handleCancel}
                 disabled={cancelling}
-                className="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-amber-300 bg-amber-950/40 border border-amber-800/60 hover:bg-amber-900/50 transition-colors cursor-pointer"
+                className="px-2.5 py-1 rounded text-xs font-mono font-medium text-rose-300 bg-rose-950/80 border border-rose-800/70 hover:bg-rose-900 transition-colors cursor-pointer"
               >
-                {cancelling ? 'Cancelling...' : '■ Cancel Test'}
+                {cancelling ? 'Cancelling...' : 'Cancel'}
               </button>
             )}
             <button
-              onClick={handleGenerateSummary}
+              onClick={() => {
+                if (!aiSummary) {
+                  handleGenerateSummary()
+                }
+                const el = document.getElementById('ai-model-report-section')
+                el?.scrollIntoView({ behavior: 'smooth' })
+              }}
               disabled={analyzingSummary}
-              className="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-indigo-200 bg-indigo-950/60 border border-indigo-700/60 hover:bg-indigo-900/60 transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 py-1 rounded text-xs font-mono font-medium text-indigo-200 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-800/80 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
-              {analyzingSummary ? 'Summarizing...' : '✨ Executive Summary'}
+              {analyzingSummary ? (
+                <>
+                  <span className="inline-block w-2.5 h-2.5 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
+                  <span>Synthesizing Report...</span>
+                </>
+              ) : (
+                <>
+                  <span>✨</span>
+                  <span>{aiSummary ? `AI Report [${aiSummary.overall_health.toUpperCase()}]` : 'Generate AI Report'}</span>
+                </>
+              )}
             </button>
           </div>
         </div>
 
         {/* Live Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2.5">
           {/* Current URL */}
-          <div className="col-span-2 p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-            <div className="text-[10px] font-mono text-slate-500 uppercase">Live URL</div>
-            <div className="text-xs font-mono font-semibold text-slate-200 truncate mt-0.5" title={liveUrl}>
+          <div className="col-span-2 p-2 rounded bg-zinc-900/70 border border-zinc-800">
+            <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-wide">Live Address</div>
+            <div className="text-xs font-mono font-medium text-zinc-200 truncate mt-0.5" title={liveUrl}>
               {liveUrl || '—'}
             </div>
           </div>
 
           {/* Elapsed Time */}
-          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-            <div className="text-[10px] font-mono text-slate-500 uppercase">Elapsed Time</div>
-            <div className="text-xs font-mono font-bold text-indigo-400 mt-0.5">
+          <div className="p-2 rounded bg-zinc-900/70 border border-zinc-800">
+            <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-wide">Duration</div>
+            <div className="text-xs font-mono font-semibold text-indigo-400 mt-0.5">
               {test?.status === 'running' ? formatElapsed(elapsedSeconds) : liveDurationMs ? `${(liveDurationMs / 1000).toFixed(1)}s` : 'Completed'}
             </div>
           </div>
 
           {/* States Explored */}
-          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-            <div className="text-[10px] font-mono text-slate-500 uppercase">States Explored</div>
-            <div className="text-base font-mono font-bold text-slate-100 mt-0.5">{statesCount}</div>
+          <div className="p-2 rounded bg-zinc-900/70 border border-zinc-800">
+            <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-wide">States</div>
+            <div className="text-xs font-mono font-semibold text-zinc-100 mt-0.5">{statesCount}</div>
           </div>
 
           {/* Actions Performed */}
-          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-            <div className="text-[10px] font-mono text-slate-500 uppercase">Actions Performed</div>
-            <div className="text-base font-mono font-bold text-slate-100 mt-0.5">{actionsCount}</div>
+          <div className="p-2 rounded bg-zinc-900/70 border border-zinc-800">
+            <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-wide">Actions</div>
+            <div className="text-xs font-mono font-semibold text-zinc-100 mt-0.5">{actionsCount}</div>
           </div>
 
           {/* Potential / Confirmed Findings */}
-          <div className="p-3 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-            <div className="text-[10px] font-mono text-slate-500 uppercase">Findings</div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs font-mono font-bold text-sky-400" title="Potential">
+          <div className="p-2 rounded bg-zinc-900/70 border border-zinc-800">
+            <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-wide">Findings</div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-xs font-mono font-semibold text-sky-400" title="Potential">
                 {potentialCount} pot.
               </span>
-              <span className="text-slate-600">/</span>
-              <span className="text-xs font-mono font-bold text-red-400" title="Confirmed">
+              <span className="text-zinc-600">/</span>
+              <span className="text-xs font-mono font-semibold text-rose-400" title="Confirmed">
                 {confirmedCount} conf.
               </span>
             </div>
@@ -1121,391 +1223,241 @@ export function Test() {
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* 2. MAIN 2-COLUMN GRID: Current State & Latest Screenshot            */}
-      {/* ------------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column: Current Application State */}
-        <div
-          className="rounded-xl border p-5 shadow-xl flex flex-col justify-between space-y-4"
-          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-        >
-          <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                <span>🌐</span> Current Application State
-              </h2>
-              {liveStatusCode && <StatusCodeBadge code={liveStatusCode} />}
-            </div>
-
-            <div className="mt-3 space-y-3">
-              <div>
-                <span className="text-[10px] font-mono text-slate-500 uppercase">Page Title</span>
-                <p className="text-xs font-mono text-slate-200 font-semibold truncate mt-0.5">
-                  {liveTitle || 'No Title Recorded'}
-                </p>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-mono text-slate-500 uppercase">State Fingerprint</span>
-                <p className="text-[11px] font-mono text-indigo-300 font-mono break-all mt-0.5">
-                  {liveFingerprint || '—'}
-                </p>
-              </div>
-
-              {/* Discovered Elements Counter */}
-              <div
-                className="p-3 rounded-lg border flex items-center justify-between"
-                style={{ background: '#080811', borderColor: '#1c1c2b' }}
-              >
-                <div>
-                  <div className="text-xs font-mono font-semibold text-slate-200">
-                    Discovered Interactive Elements ({liveElements.length})
-                  </div>
-                  <div className="text-[10px] font-mono text-slate-500">
-                    Links, buttons, inputs, selects extracted by Playwright
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowElementsDrawer(!showElementsDrawer)}
-                  className="px-2.5 py-1 rounded text-[11px] font-mono font-semibold text-indigo-300 border border-indigo-800 bg-indigo-950/50 hover:bg-indigo-900/50 transition-colors cursor-pointer"
-                >
-                  {showElementsDrawer ? 'Hide Elements' : 'View Elements →'}
-                </button>
-              </div>
-
-              {/* Signals Counter Badges */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <div
-                  className="p-2.5 rounded border text-center"
-                  style={{
-                    background: liveConsoleErrors.length > 0 ? '#1f0d0d' : '#080811',
-                    borderColor: liveConsoleErrors.length > 0 ? '#5a1d1d' : '#1c1c2b',
-                  }}
-                >
-                  <div className="text-[10px] font-mono text-slate-500">Console Errors</div>
-                  <div className={`text-xs font-mono font-bold mt-0.5 ${liveConsoleErrors.length > 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                    {liveConsoleErrors.length}
-                  </div>
-                </div>
-
-                <div
-                  className="p-2.5 rounded border text-center"
-                  style={{
-                    background: liveJsExceptions.length > 0 ? '#1f0d0d' : '#080811',
-                    borderColor: liveJsExceptions.length > 0 ? '#5a1d1d' : '#1c1c2b',
-                  }}
-                >
-                  <div className="text-[10px] font-mono text-slate-500">JS Exceptions</div>
-                  <div className={`text-xs font-mono font-bold mt-0.5 ${liveJsExceptions.length > 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                    {liveJsExceptions.length}
-                  </div>
-                </div>
-
-                <div
-                  className="p-2.5 rounded border text-center"
-                  style={{
-                    background: liveFailedRequests.length > 0 ? '#1f1406' : '#080811',
-                    borderColor: liveFailedRequests.length > 0 ? '#5e380f' : '#1c1c2b',
-                  }}
-                >
-                  <div className="text-[10px] font-mono text-slate-500">Failed HTTP</div>
-                  <div className={`text-xs font-mono font-bold mt-0.5 ${liveFailedRequests.length > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                    {liveFailedRequests.length}
-                  </div>
-                </div>
-              </div>
+      {/* Test Failure Diagnostic Banner */}
+      {test?.status === 'failed' && (
+        <div className="rounded-lg border border-rose-900/60 bg-rose-950/20 p-3 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <span className="text-rose-400 font-bold">✕</span>
+            <div className="min-w-0">
+              <h3 className="text-xs font-mono font-semibold text-rose-300 uppercase tracking-wider">
+                Test Session Terminated with Error
+              </h3>
+              <p className="text-xs font-mono text-rose-200/90 mt-0.5 break-words">
+                {test.error_message || 'An unexpected error occurred during browser exploration.'}
+              </p>
             </div>
           </div>
-
-          {/* Interactive Elements Drawer Modal */}
-          {showElementsDrawer && (
-            <div className="pt-2 border-t border-slate-800">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-mono text-slate-400 font-semibold uppercase">Discovered DOM Elements:</span>
-                <input
-                  type="text"
-                  placeholder="Filter elements..."
-                  value={elementSearch}
-                  onChange={(e) => setElementSearch(e.target.value)}
-                  className="px-2 py-0.5 rounded text-[11px] font-mono text-slate-200 border outline-none"
-                  style={{ background: '#080811', borderColor: '#26263b' }}
-                />
-              </div>
-              <div className="max-h-48 overflow-y-auto space-y-1 font-mono text-[11px]">
-                {liveElements
-                  .filter((el) => !elementSearch || el.text.toLowerCase().includes(elementSearch.toLowerCase()) || el.reference.includes(elementSearch) || el.tag.includes(elementSearch))
-                  .map((el, i) => (
-                    <div key={i} className="p-1.5 rounded border flex items-center justify-between gap-2" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-                      <div className="truncate">
-                        <span className="text-indigo-400 font-semibold mr-1.5">&lt;{el.tag}&gt;</span>
-                        <span className="text-slate-300 font-medium">{el.text || el.label || el.reference}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 shrink-0">{el.role || el.type}</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: Latest Screenshot */}
-        <div
-          className="rounded-xl border p-5 shadow-xl flex flex-col justify-between space-y-3"
-          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-        >
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <span>📷</span> Latest Screenshot Snapshot
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setScreenshotTimestamp(Date.now())}
-                className="text-[10px] font-mono text-slate-400 hover:text-slate-200 transition-colors px-2 py-0.5 rounded border border-slate-700"
-              >
-                ↻ Refresh
-              </button>
-              <button
-                onClick={() => setFullImageModal(true)}
-                className="text-[10px] font-mono text-indigo-400 hover:text-indigo-200 transition-colors px-2 py-0.5 rounded border border-indigo-800"
-              >
-                🔍 Fullscreen
-              </button>
-            </div>
-          </div>
-
-          <div
-            className="flex-1 min-h-[220px] rounded-lg border overflow-hidden flex items-center justify-center relative group"
-            style={{ background: '#07070d', borderColor: '#1c1c2b' }}
+          <Link
+            to="/"
+            className="px-3 py-1 rounded text-xs font-mono font-medium text-white bg-rose-600 hover:bg-rose-500 transition-colors whitespace-nowrap"
           >
-            <img
-              key={screenshotTimestamp}
-              src={`/api/tests/${id}/screenshot?t=${screenshotTimestamp}`}
-              alt="Test Screenshot"
-              className="max-h-[240px] w-auto max-w-full object-contain cursor-pointer transition-transform group-hover:scale-[1.01]"
-              onClick={() => setFullImageModal(true)}
-              onError={(e) => {
-                const target = e.target as HTMLImageElement
-                target.style.display = 'none'
-              }}
-            />
-          </div>
-          <div className="text-[10px] font-mono text-slate-500 text-center">
-            Updated on every deterministic state navigation
-          </div>
-        </div>
-      </div>
-
-      {/* Fullscreen Image Preview Modal */}
-      {fullImageModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
-          onClick={() => setFullImageModal(false)}
-        >
-          <div className="relative max-w-6xl max-h-[90vh] overflow-hidden rounded-lg border border-slate-700">
-            <button
-              onClick={() => setFullImageModal(false)}
-              className="absolute top-3 right-3 text-white bg-black/70 hover:bg-black p-2 rounded-full font-mono text-xs cursor-pointer z-10"
-            >
-              ✕ Close
-            </button>
-            <img
-              src={`/api/tests/${id}/screenshot?t=${screenshotTimestamp}`}
-              alt="Full Resolution Screenshot"
-              className="max-h-[85vh] w-auto object-contain bg-black"
-            />
-          </div>
+            Start New Session →
+          </Link>
         </div>
       )}
 
       {/* ------------------------------------------------------------------- */}
-      {/* 3. ACTION / EVENT TIMELINE                                          */}
+      {/* 2. TOP HORIZONTAL MULTI-AGENT SWARM COMMAND DECK                    */}
       {/* ------------------------------------------------------------------- */}
-      <div
-        className="rounded-xl border p-5 shadow-xl space-y-4"
-        style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <span>⚡</span> Action & Event Timeline
-            </h2>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-              {filteredTimeline.length} events
-            </span>
-          </div>
+      <AgentsPanel
+        activeAgent={activeAgent}
+        agentStates={agentStates}
+        currentMessage={agentMessage}
+      />
 
-          <div className="flex items-center gap-3">
-            {/* Filter pills */}
-            <div className="flex items-center gap-1">
-              {(['all', 'actions', 'observations', 'findings'] as const).map((flt) => (
-                <button
-                  key={flt}
-                  onClick={() => setTimelineFilter(flt)}
-                  className="px-2 py-0.5 rounded text-[10px] font-mono capitalize transition-colors cursor-pointer"
-                  style={{
-                    background: timelineFilter === flt ? '#6366f125' : '#11111d',
-                    color: timelineFilter === flt ? '#a5b4fc' : '#94a3b8',
-                    border: `1px solid ${timelineFilter === flt ? '#6366f1' : '#1e1e2e'}`,
-                  }}
-                >
-                  {flt}
-                </button>
-              ))}
-            </div>
-
-            <label className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoScroll}
-                onChange={(e) => setAutoScroll(e.target.checked)}
-                className="rounded accent-indigo-500"
-              />
-              Auto-scroll
-            </label>
-          </div>
+      {/* ------------------------------------------------------------------- */}
+      {/* 3. LIVE INSPECTION WORKSPACE: TIMELINE (LEFT) & LIVE VISION (RIGHT) */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-start">
+        {/* Left Column: Action & Event Timeline (4 cols) */}
+        <div className="lg:col-span-4 xl:col-span-4">
+          <LiveActivityTimeline
+            events={timelineEvents as any}
+            activeAgent={activeAgent}
+          />
         </div>
 
-        {/* Timeline Log Window */}
-        <div
-          className="h-64 overflow-y-auto p-4 rounded-lg border font-mono text-xs space-y-1.5"
-          style={{ background: '#07070d', borderColor: '#1c1c2b' }}
-        >
-          {filteredTimeline.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-slate-600 text-xs">
-              Awaiting actions and telemetry events...
-            </div>
-          ) : (
-            filteredTimeline.map((ev) => (
-              <div key={ev.id} className="flex items-start gap-2.5 py-0.5">
-                <span className="text-slate-600 text-[11px] shrink-0">[{ev.time}]</span>
-                <span className="font-semibold shrink-0" style={{ color: ev.color || '#94a3b8' }}>
-                  {ev.label}
-                </span>
-                {ev.detail && <span className="text-slate-400 truncate">{ev.detail}</span>}
-              </div>
-            ))
-          )}
-          <div ref={timelineEndRef} />
+        {/* Right Column: Live AI Browser View (8 cols) */}
+        <div className="lg:col-span-8 xl:col-span-8">
+          <LiveBrowserView
+            testId={id!}
+            currentUrl={liveUrl}
+            pageTitle={liveTitle}
+            statusCode={liveStatusCode}
+            screenshotTimestamp={screenshotTimestamp}
+            activeAction={activeAction}
+            activeAgent={activeAgent}
+            elements={liveElements}
+            isLoading={isActionLoading}
+            error={test?.status === 'failed' ? test.error_message : null}
+            onRefresh={() => setScreenshotTimestamp(Date.now())}
+            onStopInspection={test?.status === 'running' ? handleCancel : undefined}
+            isStopping={cancelling}
+          />
         </div>
       </div>
 
       {/* ------------------------------------------------------------------- */}
-      {/* 4. FINDINGS INTERFACE                                               */}
+      {/* 4. TABBED INVESTIGATION & AUDIT CONSOLE                             */}
       {/* ------------------------------------------------------------------- */}
-      <div
-        className="rounded-xl border p-5 shadow-xl space-y-5"
-        style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <span>🛡️</span> Discovered Findings ({findings.length})
-            </h2>
+      <div className="bg-[#101117] border border-[#1c1e28] rounded p-2.5 shadow-xs space-y-2.5 text-[10px]">
+        {/* Console Tab Selector */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#1a1c26]">
+          <div className="flex items-center gap-1 bg-[#0b0c10] p-0.5 rounded border border-[#1c1e28]">
+            <button
+              onClick={() => setTimelineFilter('all')}
+              className="px-2 py-0.5 rounded text-[9.5px] font-bold uppercase transition-colors text-zinc-300 bg-[#1c1e28] cursor-pointer"
+            >
+              [+] FINDINGS ({findings.length})
+            </button>
+            <button
+              onClick={() => {
+                const el = document.getElementById('ai-model-report-section')
+                el?.scrollIntoView({ behavior: 'smooth' })
+              }}
+              className="px-2 py-0.5 rounded text-[9.5px] font-bold uppercase transition-colors text-indigo-300 hover:bg-indigo-950/60 cursor-pointer flex items-center gap-1"
+            >
+              <span>✨</span>
+              <span>AI_MODEL_REPORT</span>
+              {aiSummary && (
+                <span className="px-1 py-0.1 text-[8px] rounded bg-indigo-900/60 text-indigo-200">
+                  {aiSummary.overall_health.toUpperCase()}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setShowElementsDrawer(!showElementsDrawer)}
+              className={`px-2 py-0.5 rounded text-[9.5px] uppercase transition-colors cursor-pointer ${
+                showElementsDrawer ? 'bg-indigo-950 text-indigo-300 border border-indigo-700' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              DOM_ELEMENTS ({liveElements.length})
+            </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 text-[9.5px]">
             {/* Search */}
             <input
               type="text"
               placeholder="Search findings..."
               value={findingSearch}
               onChange={(e) => setFindingSearch(e.target.value)}
-              className="px-3 py-1 rounded-lg text-xs font-mono text-slate-200 placeholder-slate-600 border outline-none"
-              style={{ background: '#080811', borderColor: '#1c1c2b' }}
+              className="px-2 py-0.5 rounded text-[9.5px] font-mono text-zinc-200 bg-[#0b0c10] border border-[#1c1e28] outline-none"
             />
 
-            {/* Severity Filter */}
+            {/* Severity */}
             <select
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value)}
-              className="px-2.5 py-1 rounded text-xs font-mono text-slate-300 border outline-none capitalize"
-              style={{ background: '#080811', borderColor: '#1c1c2b' }}
+              className="px-1.5 py-0.5 rounded text-[9.5px] font-mono text-zinc-300 bg-[#0b0c10] border border-[#1c1e28] outline-none uppercase"
             >
-              <option value="all">All Severities</option>
+              <option value="all">ALL_SEVERITIES</option>
               {['critical', 'high', 'medium', 'low', 'info'].map((sev) => (
-                <option key={sev} value={sev}>{sev}</option>
+                <option key={sev} value={sev}>{sev.toUpperCase()}</option>
               ))}
             </select>
 
-            {/* Category Filter */}
+            {/* Category */}
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-2.5 py-1 rounded text-xs font-mono text-slate-300 border outline-none capitalize"
-              style={{ background: '#080811', borderColor: '#1c1c2b' }}
+              className="px-1.5 py-0.5 rounded text-[9.5px] font-mono text-zinc-300 bg-[#0b0c10] border border-[#1c1e28] outline-none uppercase"
             >
-              <option value="all">All Categories</option>
+              <option value="all">ALL_CATEGORIES</option>
               {['functional', 'network', 'javascript', 'crash', 'performance', 'ui', 'ux', 'security', 'accessibility'].map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1 rounded text-xs font-mono text-slate-300 border outline-none capitalize"
-              style={{ background: '#080811', borderColor: '#1c1c2b' }}
-            >
-              <option value="all">All Statuses</option>
-              {['potential', 'investigating', 'confirmed', 'unconfirmed', 'dismissed'].map((st) => (
-                <option key={st} value={st}>{st}</option>
+                <option key={cat} value={cat}>{cat.toUpperCase()}</option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* Findings List */}
+        {/* Telemetry Signals Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          <div className="p-1.5 rounded bg-[#0d0e14] border border-[#181a24] flex items-center justify-between">
+            <span className="text-zinc-500 uppercase text-[9px]">Console Errors</span>
+            <span className={`font-bold ${liveConsoleErrors.length > 0 ? 'text-rose-400' : 'text-zinc-400'}`}>
+              {liveConsoleErrors.length}
+            </span>
+          </div>
+          <div className="p-1.5 rounded bg-[#0d0e14] border border-[#181a24] flex items-center justify-between">
+            <span className="text-zinc-500 uppercase text-[9px]">JS Exceptions</span>
+            <span className={`font-bold ${liveJsExceptions.length > 0 ? 'text-rose-400' : 'text-zinc-400'}`}>
+              {liveJsExceptions.length}
+            </span>
+          </div>
+          <div className="p-1.5 rounded bg-[#0d0e14] border border-[#181a24] flex items-center justify-between">
+            <span className="text-zinc-500 uppercase text-[9px]">Failed HTTP</span>
+            <span className={`font-bold ${liveFailedRequests.length > 0 ? 'text-amber-400' : 'text-zinc-400'}`}>
+              {liveFailedRequests.length}
+            </span>
+          </div>
+          <div className="p-1.5 rounded bg-[#0d0e14] border border-[#181a24] flex items-center justify-between">
+            <span className="text-zinc-500 uppercase text-[9px]">HTTP Status</span>
+            <span className="font-bold text-zinc-300">
+              {liveStatusCode ? `HTTP_${liveStatusCode}` : '200_OK'}
+            </span>
+          </div>
+        </div>
+
+        {/* Interactive Elements Drawer if open */}
+        {showElementsDrawer && (
+          <div className="p-2 rounded bg-[#0b0c10] border border-[#1c1e28] space-y-1.5">
+            <div className="flex items-center justify-between text-[9.5px]">
+              <span className="text-zinc-400 font-bold uppercase">DISCOVERED_DOM_NODES ({liveElements.length}):</span>
+              <input
+                type="text"
+                placeholder="Filter tag / text..."
+                value={elementSearch}
+                onChange={(e) => setElementSearch(e.target.value)}
+                className="px-1.5 py-0.2 rounded text-[9px] bg-[#141620] text-zinc-200 border border-[#242735] outline-none"
+              />
+            </div>
+            <div className="max-h-36 overflow-y-auto space-y-1 text-[9px] custom-scrollbar pr-1">
+              {liveElements
+                .filter((el) => !elementSearch || el.text.toLowerCase().includes(elementSearch.toLowerCase()) || el.reference.includes(elementSearch) || el.tag.includes(elementSearch))
+                .map((el, i) => (
+                  <div key={i} className="p-1 rounded bg-[#0e1017] border border-[#1c1e28] flex items-center justify-between gap-2">
+                    <div className="truncate">
+                      <span className="text-indigo-400 font-bold mr-1">&lt;{el.tag}&gt;</span>
+                      <span className="text-zinc-300">{el.text || el.label || el.reference}</span>
+                    </div>
+                    <span className="text-zinc-500 shrink-0 text-[8px] uppercase">{el.role || el.type}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* Findings Grid */}
         {filteredFindings.length === 0 ? (
-          <div
-            className="p-12 rounded-lg border text-center"
-            style={{ background: '#080811', borderColor: '#1c1c2b' }}
-          >
-            <div className="text-2xl mb-2">🎉</div>
-            <p className="text-sm font-mono text-slate-300 font-semibold">
-              {findings.length === 0 ? 'No Findings Detected Yet' : 'No findings match current filter criteria'}
-            </p>
-            <p className="text-xs font-mono text-slate-500 mt-1">
-              PROBE evaluates network errors, JavaScript exceptions, and broken UI states deterministically.
-            </p>
+          <div className="p-6 rounded bg-[#0b0c10] border border-[#1c1e28] text-center text-zinc-500 text-[10px]">
+            {findings.length === 0 ? 'NO_FINDINGS_DETECTED_YET' : 'NO_FINDINGS_MATCHING_FILTER'}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {filteredFindings.map((f) => (
               <div
                 key={f.id}
                 onClick={() => setSelectedFinding(f)}
-                className="p-4 rounded-lg border hover:border-indigo-500/60 transition-all cursor-pointer space-y-3 group shadow-md"
-                style={{ background: '#090912', borderColor: '#1c1c2b' }}
+                className="p-2.5 rounded bg-[#0d0e14] border border-[#1c1e28] hover:border-indigo-600/60 transition-colors cursor-pointer space-y-1.5"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex items-center justify-between gap-1.5 text-[9px]">
+                  <div className="flex items-center gap-1">
                     <FindingSeverityBadge severity={String(f.severity)} />
                     <FindingStatusBadge status={String(f.status)} />
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800/80 text-slate-400 uppercase">
+                    <span className="px-1 py-0.2 rounded bg-[#181a24] text-zinc-400 uppercase text-[8px]">
                       {f.category}
                     </span>
                   </div>
                   {f.ai_analysis && (
-                    <span className="text-[10px] font-mono text-indigo-400 font-semibold flex items-center gap-1">
-                      ✨ AI Analyzed
+                    <span className="text-indigo-300 font-bold text-[8.5px]">
+                      ✨ AI_ANALYZED
                     </span>
                   )}
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-mono font-bold text-slate-100 group-hover:text-indigo-300 transition-colors line-clamp-2">
+                  <h3 className="text-[10.5px] font-bold text-zinc-100 truncate">
                     {f.title}
                   </h3>
-                  <p className="text-[11px] font-mono text-slate-400 line-clamp-2 mt-1">
+                  <p className="text-[9.5px] text-zinc-400 line-clamp-1 mt-0.5 font-sans">
                     {f.description}
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800/60 text-[10px] font-mono text-slate-500">
-                  <span>Confidence: {Math.round((f.confidence ?? 0.8) * 100)}%</span>
-                  <span className="text-indigo-400 group-hover:underline">Inspect Details →</span>
+                <div className="flex items-center justify-between pt-1 border-t border-[#181a24] text-[8.5px] text-zinc-500">
+                  <span>CONFIDENCE: {Math.round((f.confidence ?? 0.8) * 100)}%</span>
+                  <span className="text-indigo-400 font-bold hover:underline">[INSPECT]</span>
                 </div>
               </div>
             ))}
@@ -1513,60 +1465,20 @@ export function Test() {
         )}
       </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* 5. AI EXECUTIVE TEST SUMMARY (If available)                         */}
-      {/* ------------------------------------------------------------------- */}
-      {aiSummary && (
-        <div
-          className="rounded-xl border p-5 shadow-xl space-y-4"
-          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-        >
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <span>✨</span> Gemini Executive Test Run Summary
-            </h2>
-            <span
-              className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider"
-              style={{
-                color: aiSummary.overall_health === 'healthy' ? '#22c55e' : aiSummary.overall_health === 'degraded' ? '#f59e0b' : '#ef4444',
-                background: `${aiSummary.overall_health === 'healthy' ? '#22c55e' : aiSummary.overall_health === 'degraded' ? '#f59e0b' : '#ef4444'}18`,
-                border: `1px solid ${aiSummary.overall_health === 'healthy' ? '#22c55e' : aiSummary.overall_health === 'degraded' ? '#f59e0b' : '#ef4444'}35`,
-              }}
-            >
-              {aiSummary.overall_health?.replace('_', ' ')}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-              <div className="text-xs font-mono font-bold text-slate-400 uppercase mb-2">Key Takeaways</div>
-              <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
-                {aiSummary.key_takeaways?.map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-              <div className="text-xs font-mono font-bold text-red-400 uppercase mb-2">Top Identified Risks</div>
-              <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
-                {aiSummary.top_risks?.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-lg border" style={{ background: '#080811', borderColor: '#1c1c2b' }}>
-              <div className="text-xs font-mono font-bold text-emerald-400 uppercase mb-2">Recommended Actions</div>
-              <ul className="text-xs font-mono text-slate-300 space-y-1.5 list-disc list-inside">
-                {aiSummary.recommended_actions?.map((a, i) => (
-                  <li key={i}>{a}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 5. DEDICATED AI MODEL INSPECTION & DIAGNOSTIC REPORT SECTION */}
+      <div id="ai-model-report-section">
+        <AiModelReport
+          aiSummary={aiSummary}
+          testStatus={test?.status || 'pending'}
+          findingsCount={findings.length}
+          actionsCount={actionsCount}
+          statesCount={statesCount}
+          targetUrl={liveUrl || test?.url || ''}
+          onGenerateReport={handleGenerateSummary}
+          isGenerating={analyzingSummary}
+          error={error}
+        />
+      </div>
 
       {/* Finding Detail Modal */}
       {selectedFinding && id && (

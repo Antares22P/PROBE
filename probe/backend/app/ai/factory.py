@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from app.ai.provider import AIProvider
 from app.ai.providers.gemini_provider import GeminiProvider

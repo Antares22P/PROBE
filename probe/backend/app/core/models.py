@@ -45,6 +45,24 @@ class TestStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class AgentType(str, Enum):
+    """Specialized AI agent roles operating in PROBE."""
+
+    TECHNICAL = "technical"
+    UX_UI = "ux_ui"
+    CHAOS = "chaos"
+    USER_BEHAVIOR = "user_behavior"
+
+
+class AgentStatusState(str, Enum):
+    """Operational lifecycle state of an individual AI agent."""
+
+    EXPLORING = "exploring"
+    REVIEWING = "reviewing"
+    WAITING = "waiting"
+    FINISHED = "finished"
+
+
 class ActionType(str, Enum):
     """All action types supported across platforms."""
 
@@ -57,6 +75,35 @@ class ActionType(str, Enum):
     BACK = "BACK"
     WAIT = "WAIT"
     SCREENSHOT = "SCREENSHOT"
+
+
+class Bounds(BaseModel):
+    """Screen bounds of a UI element."""
+
+    x: float = 0.0
+    y: float = 0.0
+    width: float = 0.0
+    height: float = 0.0
+
+
+class BrowserActionEvent(BaseModel):
+    """Real-time structured event for live AI browser inspection."""
+
+    type: str = "browser_action"
+    inspection_id: str
+    agent: AgentType = AgentType.TECHNICAL
+    action: str  # click, type, scroll, navigate, reload, etc.
+    phase: Optional[str] = "targeting"  # scanning, deciding, targeting, interacting, observing
+    target: Optional[str] = None
+    selector: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    target_bounds: Optional[Bounds] = None
+    value: Optional[str] = None
+    direction: Optional[str] = None
+    amount: Optional[float] = None
+    reason: Optional[str] = None
+    timestamp: datetime = Field(default_factory=_now)
 
 
 import hashlib
@@ -85,15 +132,6 @@ class Viewport(BaseModel):
 # ---------------------------------------------------------------------------
 # Element
 # ---------------------------------------------------------------------------
-
-
-class Bounds(BaseModel):
-    """Screen bounds of a UI element."""
-
-    x: float = 0.0
-    y: float = 0.0
-    width: float = 0.0
-    height: float = 0.0
 
 
 class Element(BaseModel):

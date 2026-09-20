@@ -29,7 +29,7 @@ from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 
 
 class GeminiProvider(AIProvider):
@@ -42,11 +42,10 @@ class GeminiProvider(AIProvider):
         api_key: Optional[str] = None,
         model_name: Optional[str] = None,
     ) -> None:
-        self._api_key = (
-            api_key
-            or os.environ.get("GEMINI_API_KEY")
-            or os.environ.get("GOOGLE_API_KEY")
-        )
+        if api_key is not None:
+            self._api_key = api_key
+        else:
+            self._api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
         self._model = (
             model_name
             or os.environ.get("GEMINI_MODEL")

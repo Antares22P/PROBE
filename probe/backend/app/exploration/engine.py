@@ -7,6 +7,7 @@ Open → Observe → Plan Safe Actions → Execute → Observe → Update State 
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import time
 import urllib.parse
 from typing import Any, Callable, Coroutine, Optional
@@ -15,7 +16,10 @@ from app.core.models import (
     Action,
     ActionResult,
     ActionType,
+    AgentStatusState,
+    AgentType,
     ApplicationState,
+    BrowserActionEvent,
     Element,
     TestConfig,
     TestSession,
@@ -42,6 +46,7 @@ class ExplorationEngine:
     - Action execution history & results
     - Loop detection and cycle avoidance
     - Bounded execution limits (actions, states, depth, duration)
+    - Live multi-agent status tracking & browser interaction streaming
     """
 
     def __init__(
@@ -66,6 +71,7 @@ class ExplorationEngine:
         self._all_observations: list[ApplicationState] = []
         self._current_depth = 0
         self._start_time: float = 0.0
+        self._active_agent: AgentType = AgentType.TECHNICAL
 
     async def explore(self) -> tuple[list[ApplicationState], list[ActionResult]]:
         """
@@ -90,6 +96,10 @@ class ExplorationEngine:
             "status": "running",
             "message": f"Opening {self._session.url}...",
         })
+        await self._emit_agent_status(
+            AgentType.TECHNICAL,
+            f"Technical AI initializing browser and resolving {self._session.url}...",
+        )
 
         # 1. Initial navigation & observation
         init_action = Action(
@@ -115,6 +125,10 @@ class ExplorationEngine:
                 "url": f"/api/tests/{self._session.id}/screenshot",
                 "path": current_state.screenshot_path,
             })
+            await self._emit("browser_frame", {
+                "url": f"/api/tests/{self._session.id}/screenshot",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
 
         # If navigation encountered a fatal error, terminate early
         if current_state.error and not current_state.url:
@@ -136,7 +150,7 @@ class ExplorationEngine:
                         description="Backtracking to previous page",
                     )
                     action_result, new_state = await self._execute_and_observe(
-                        back_action, before_state=current_state
+                        back_action, before_state=current_state, target_element=None
                     )
                     self._current_depth = max(0, self._current_depth - 1)
                     current_state = new_state
@@ -151,9 +165,18 @@ class ExplorationEngine:
                 self._tried_actions_per_state[state_fp] = set()
             self._tried_actions_per_state[state_fp].add(action_key)
 
-            # Execute action
+            # Determine agent for action and emit agent status update if changed
+            agent = self._determine_agent_for_action(next_action, target_element)
+            if agent != self._active_agent:
+                self._active_agent = agent
+                await self._emit_agent_status(
+                    agent,
+                    f"{agent.value.replace('_', ' ').title()} AI executing {next_action.type.value.lower()} interaction...",
+                )
+
+            # Execute action with target element context
             action_result, new_state = await self._execute_and_observe(
-                next_action, before_state=current_state
+                next_action, before_state=current_state, target_element=target_element
             )
 
             # Update depth tracking
@@ -170,6 +193,11 @@ class ExplorationEngine:
             duration_s=elapsed,
             total_actions=len(self._executed_actions),
             total_states=len(self._visited_states),
+        )
+
+        await self._emit_agent_status(
+            AgentType.TECHNICAL,
+            "Technical AI reviewing collected telemetry and analyzing findings...",
         )
 
         return self._all_observations, self._executed_actions
@@ -338,24 +366,145 @@ class ExplorationEngine:
 
         return "Sample test data"
 
+    def _determine_agent_for_action(
+        self, action: Action, element: Optional[Element]
+    ) -> AgentType:
+        """Assign the appropriate AI agent role based on interaction context."""
+        if action.type in (ActionType.NAVIGATE, ActionType.BACK):
+            return AgentType.TECHNICAL
+        if action.type == ActionType.SCROLL:
+            return AgentType.UX_UI
+        if action.type == ActionType.TYPE:
+            return AgentType.USER_BEHAVIOR
+        if action.type == ActionType.CLICK:
+            if element and element.type in ("checkbox", "radio", "input:submit", "select"):
+                return AgentType.USER_BEHAVIOR
+            if element and "cart" in (element.text or "").lower() or "checkout" in (element.text or "").lower():
+                return AgentType.USER_BEHAVIOR
+            if element and element.type == "button":
+                return AgentType.USER_BEHAVIOR
+            return AgentType.TECHNICAL
+        return AgentType.TECHNICAL
+
+    async def _emit_agent_status(self, active_agent: AgentType, message: str) -> None:
+        """Broadcast live multi-agent operational states."""
+        await self._emit("agent_status", {
+            "active_agent": active_agent.value,
+            "agents": {
+                "technical": "exploring" if active_agent == AgentType.TECHNICAL else "waiting",
+                "user_behavior": "exploring" if active_agent == AgentType.USER_BEHAVIOR else "waiting",
+                "ux_ui": "exploring" if active_agent == AgentType.UX_UI else "waiting",
+                "chaos": "exploring" if active_agent == AgentType.CHAOS else "waiting",
+            },
+            "message": message,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
     # ------------------------------------------------------------------
     # Execution & Telemetry
     # ------------------------------------------------------------------
 
     async def _execute_and_observe(
-        self, action: Action, before_state: ApplicationState
+        self,
+        action: Action,
+        before_state: ApplicationState,
+        target_element: Optional[Element] = None,
     ) -> tuple[ActionResult, ApplicationState]:
-        """Execute an action, measure duration, observe new state, and emit events."""
+        """Execute an action, measure duration, observe new state, and emit live inspection events."""
         act_start = time.perf_counter()
         before_fp = before_state.fingerprint
+        agent = self._determine_agent_for_action(action, target_element)
+
+        # 1. Resolve coordinates and bounding box for cursor & target visualization
+        x: Optional[float] = None
+        y: Optional[float] = None
+        target_bounds_dict: Optional[dict] = None
+
+        if target_element:
+            bbox = target_element.bounding_box or target_element.bounds
+            if bbox and bbox.width > 0 and bbox.height > 0:
+                x = round(bbox.x + bbox.width / 2.0, 1)
+                y = round(bbox.y + bbox.height / 2.0, 1)
+                target_bounds_dict = {
+                    "x": bbox.x,
+                    "y": bbox.y,
+                    "width": bbox.width,
+                    "height": bbox.height,
+                }
+
+        if x is None and action.target and hasattr(self._driver, "get_element_coordinates"):
+            try:
+                coords = await self._driver.get_element_coordinates(action.target)
+                if coords:
+                    x = coords.get("x")
+                    y = coords.get("y")
+                    target_bounds_dict = {
+                        "x": coords.get("left", (coords.get("x", 0) - coords.get("width", 0) / 2)),
+                        "y": coords.get("top", (coords.get("y", 0) - coords.get("height", 0) / 2)),
+                        "width": coords.get("width", 0),
+                        "height": coords.get("height", 0),
+                    }
+            except Exception:
+                pass
+
+        # Fallback coordinates for scroll / navigation
+        if x is None and y is None:
+            if action.type == ActionType.SCROLL:
+                x = 640.0
+                y = 400.0
+            elif action.type == ActionType.NAVIGATE:
+                x = 640.0
+                y = 80.0
+
+        # Synthesize human-readable AI reason
+        reason: str
+        target_label = (
+            (target_element.text or target_element.label) if target_element else (action.target or "page")
+        )
+        if action.type == ActionType.CLICK:
+            reason = f"Interact with '{target_label}' to test navigation and state transitions"
+        elif action.type == ActionType.TYPE:
+            reason = f"Provide test data '{action.value}' into '{target_label}' to test input validation"
+        elif action.type == ActionType.SCROLL:
+            reason = "Scroll down to reveal lazy-loaded content and verify viewport stability"
+        elif action.type == ActionType.BACK:
+            reason = "Backtrack to previous application state to explore alternative pathways"
+        else:
+            reason = action.description or f"Execute {action.type.value} interaction"
+
+        # Emit live BROWSER_ACTION event (drives real-time AI cursor animation & target highlight)
+        await self._emit("browser_action", {
+            "inspection_id": self._session.id,
+            "agent": agent.value,
+            "action": action.type.value.lower(),
+            "phase": "targeting",
+            "target": target_label,
+            "selector": action.target,
+            "x": x,
+            "y": y,
+            "target_bounds": target_bounds_dict,
+            "value": action.value,
+            "direction": "down" if action.type == ActionType.SCROLL else None,
+            "amount": float(action.value or 400) if action.type == ActionType.SCROLL else None,
+            "reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
         # Emit ACTION_STARTED
         await self._emit("action_start", {
             "action_type": action.type.value,
             "target": action.target,
             "value": action.value,
+            "agent": agent.value,
+            "phase": "interacting",
+            "x": x,
+            "y": y,
+            "target_bounds": target_bounds_dict,
             "description": action.description or f"Executing {action.type.value}",
         })
+
+        # Micro-pause to allow smooth visual cursor travel, target box lock-on, and thought bubble rendering
+        await asyncio.sleep(0.65)
 
         success = True
         error_msg: Optional[str] = None
@@ -392,6 +541,7 @@ class ExplorationEngine:
             await self._emit("action_completed", {
                 "action_type": action.type.value,
                 "target": action.target,
+                "agent": agent.value,
                 "duration_ms": duration_ms,
                 "description": action.description or f"Completed {action.type.value}",
                 "new_url": new_state.url,
@@ -401,27 +551,31 @@ class ExplorationEngine:
             await self._emit("action_failed", {
                 "action_type": action.type.value,
                 "target": action.target,
+                "agent": agent.value,
                 "error": error_msg,
                 "description": f"Failed {action.type.value}: {error_msg}",
             })
 
+        # Capture screenshot frame after interaction to ensure Live View is up to date
+        try:
+            ev = await self._driver.capture_screenshot()
+            new_state.screenshot_path = ev.screenshot_path
+            await self._emit("screenshot", {
+                "url": f"/api/tests/{self._session.id}/screenshot",
+                "path": new_state.screenshot_path,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            await self._emit("browser_frame", {
+                "url": f"/api/tests/{self._session.id}/screenshot",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as exc:
+            logger.debug("interaction_screenshot_failed", error=str(exc))
+
         # Process new state if fingerprint is new or state changed
         if after_fp and after_fp not in self._visited_states:
-            # Capture screenshot on new state
-            try:
-                ev = await self._driver.capture_screenshot()
-                new_state.screenshot_path = ev.screenshot_path
-            except Exception:
-                pass
-
             self._record_observation(new_state)
-
             await self._emit("observation", self._state_event_payload(new_state))
-            if new_state.screenshot_path:
-                await self._emit("screenshot", {
-                    "url": f"/api/tests/{self._session.id}/screenshot",
-                    "path": new_state.screenshot_path,
-                })
 
         return result, new_state
 

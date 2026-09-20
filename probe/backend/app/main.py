@@ -2,11 +2,22 @@
 PROBE Backend — FastAPI application entrypoint.
 """
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Playwright on Windows requires ProactorEventLoop to manage browser subprocesses
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    except Exception:
+        pass
 
 from app.api.router import router
 from app.storage.database import init_db
@@ -61,3 +72,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(router, prefix="/api")
+
+
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "PROBE Autonomous Web Application Testing Engine",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "api": "/api",
+        "frontend": "http://localhost:5173",
+    }
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}

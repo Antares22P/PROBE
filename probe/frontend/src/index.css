@@ -11,32 +11,40 @@
 }
 
 body {
-  background-color: #0a0a0f;
-  color: #e2e8f0;
-  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #0c0d11;
+  color: #d1d5db;
+  font-family: 'JetBrains Mono', 'Roboto Mono', 'Share Tech Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
   margin: 0;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
 }
 
-/* Scrollbars */
+/* Micro Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: #111118;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2d2d3d;
-  border-radius: 3px;
+  background: #23252e;
+  border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3d3d5c;
+  background: #363945;
 }
 
-/* SSE log scrollable area */
-.log-scroll {
+.custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #2d2d3d #111118;
+  scrollbar-color: #23252e transparent;
+}
+
+/* Sharp focus outlines */
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 1px solid #6366f1;
+  outline-offset: 1px;
 }

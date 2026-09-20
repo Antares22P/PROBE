@@ -294,6 +294,23 @@ async def get_test_screenshot(
     """Retrieve the captured screenshot for a test session."""
     from app.storage.artifacts import default_artifact_storage
 
+    # 1. First check files on disk in the test directory (fastest, most up-to-date)
+    tdir = os.path.join(default_artifact_storage.base_dir, test_id)
+    if os.path.isdir(tdir):
+        png_files = [
+            os.path.join(tdir, f)
+            for f in os.listdir(tdir)
+            if f.endswith(".png")
+        ]
+        if png_files:
+            latest_file = max(png_files, key=os.path.getmtime)
+            return FileResponse(
+                latest_file,
+                media_type="image/png",
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
+
+    # 2. Check DB records
     repo = TestRepository(db)
     ev = await repo.get_latest_screenshot_evidence(test_id)
     if ev and ev.screenshot_path:
@@ -301,7 +318,11 @@ async def get_test_screenshot(
         if not os.path.isabs(path):
             path = os.path.join(default_artifact_storage.base_dir, path)
         if os.path.exists(path):
-            return FileResponse(path, media_type="image/png")
+            return FileResponse(
+                path,
+                media_type="image/png",
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
 
     obs = await repo.get_latest_observation(test_id)
     if obs and obs.screenshot_path:
@@ -309,7 +330,11 @@ async def get_test_screenshot(
         if not os.path.isabs(path):
             path = os.path.join(default_artifact_storage.base_dir, path)
         if os.path.exists(path):
-            return FileResponse(path, media_type="image/png")
+            return FileResponse(
+                path,
+                media_type="image/png",
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
 
     raise HTTPException(status_code=404, detail="Screenshot not available for this test")
 

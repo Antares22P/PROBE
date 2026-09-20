@@ -3,28 +3,27 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import type { Test } from '../types'
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: '#6b7280',
-  running: '#6366f1',
-  completed: '#22c55e',
-  failed: '#ef4444',
-  cancelled: '#f59e0b',
-}
-
 function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLORS[status] ?? '#6b7280'
+  const isOk = status === 'completed'
+  const isErr = status === 'failed'
+  const isRun = status === 'running'
+
   return (
     <span
-      className="px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase tracking-wider inline-flex items-center gap-1.5"
-      style={{
-        color,
-        backgroundColor: `${color}18`,
-        border: `1px solid ${color}35`,
-      }}
+      className={`px-1.5 py-0.2 rounded text-[8.5px] font-mono font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
+        isRun
+          ? 'bg-indigo-950 text-indigo-300 border border-indigo-700'
+          : isOk
+          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+          : isErr
+          ? 'bg-rose-950 text-rose-300 border border-rose-800'
+          : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+      }`}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full ${status === 'running' ? 'animate-pulse' : ''}`}
-        style={{ background: color }}
+        className={`w-1 h-1 rounded-full ${
+          isRun ? 'bg-indigo-400 animate-pulse' : isOk ? 'bg-emerald-400' : isErr ? 'bg-rose-400' : 'bg-zinc-500'
+        }`}
       />
       {status}
     </span>
@@ -46,7 +45,7 @@ function formatDuration(ms?: number | null, startedAt?: string | null, completed
       return `${Math.floor(diff / 60000)}m ${Math.round((diff % 60000) / 1000)}s`
     }
   }
-  if (startedAt && !completedAt) return 'Running...'
+  if (startedAt && !completedAt) return 'RUNNING...'
   return '—'
 }
 
@@ -92,61 +91,48 @@ export function History() {
   })
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    <div className="max-w-6xl mx-auto px-4 py-4 space-y-3 font-mono text-[10.5px]">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-base font-mono font-bold text-slate-100 uppercase tracking-wider">
-              Test Run History
-            </h1>
-            <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
-              {tests.length} Total Runs
-            </span>
-          </div>
-          <p className="text-xs font-mono text-slate-500 mt-1">
-            Persisted autonomous test sessions from the real database
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#1c1e28]">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-bold text-zinc-100 uppercase tracking-wider">
+            TEST_RUN_ARCHIVE
+          </span>
+          <span className="px-1.5 py-0.2 rounded text-[9.5px] bg-[#141620] text-zinc-400 border border-[#242735]">
+            {tests.length}_SESSIONS
+          </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={load}
-            className="text-xs font-mono text-slate-400 hover:text-slate-100 transition-colors px-3 py-1.5 rounded-lg border flex items-center gap-1.5 cursor-pointer"
-            style={{ background: '#11111d', borderColor: '#26263b' }}
+            className="text-[9.5px] text-zinc-400 hover:text-zinc-100 transition-colors px-2 py-1 rounded border border-[#242735] bg-[#141620] cursor-pointer"
           >
-            <span>↻</span>
-            <span>Refresh</span>
+            [REFRESH]
           </button>
           <Link
             to="/"
-            className="text-xs font-mono font-semibold text-white px-3.5 py-1.5 rounded-lg transition-all shadow-md flex items-center gap-1.5"
-            style={{ background: '#6366f1' }}
+            className="text-[9.5px] font-bold text-white px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 transition-colors"
           >
-            <span>+</span>
-            <span>New Test</span>
+            + NEW_SESSION
           </Link>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div
-        className="rounded-xl border p-3 mb-6 flex flex-wrap items-center justify-between gap-3"
-        style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-      >
-        <div className="relative flex-1 min-w-[220px]">
+      <div className="bg-[#101117] border border-[#1c1e28] rounded p-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="relative flex-1 min-w-[200px]">
           <input
             type="text"
             placeholder="Search by URL or Test ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg text-xs font-mono text-slate-200 placeholder-slate-600 border outline-none"
-            style={{ background: '#07070d', borderColor: '#1e1e2e' }}
+            className="w-full px-2 py-1 rounded text-[10px] text-zinc-200 placeholder-zinc-600 bg-[#0b0c10] border border-[#1c1e28] outline-none"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1.5 text-xs text-slate-500 hover:text-slate-300"
+              className="absolute right-2 top-1 text-[9px] text-zinc-500 hover:text-zinc-300"
             >
               ✕
             </button>
@@ -154,17 +140,16 @@ export function History() {
         </div>
 
         {/* Status Filters */}
-        <div className="flex items-center gap-1 overflow-x-auto">
+        <div className="flex items-center gap-1 overflow-x-auto text-[9.5px]">
           {['all', 'running', 'completed', 'failed', 'cancelled', 'pending'].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
-              className="px-2.5 py-1 rounded text-[11px] font-mono capitalize transition-colors cursor-pointer"
-              style={{
-                background: statusFilter === st ? '#6366f125' : '#11111d',
-                color: statusFilter === st ? '#a5b4fc' : '#94a3b8',
-                border: `1px solid ${statusFilter === st ? '#6366f1' : '#1e1e2e'}`,
-              }}
+              className={`px-2 py-0.5 rounded uppercase transition-colors cursor-pointer ${
+                statusFilter === st
+                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-700 font-bold'
+                  : 'bg-[#141620] text-zinc-400 border border-[#242735] hover:text-zinc-200'
+              }`}
             >
               {st}
             </button>
@@ -173,72 +158,45 @@ export function History() {
       </div>
 
       {error && (
-        <div
-          className="mb-6 px-4 py-3 rounded-lg text-xs font-mono border flex items-center justify-between"
-          style={{ background: '#1a0a0a', borderColor: '#7f1d1d', color: '#fca5a5' }}
-        >
-          <span>Error loading test history: {error}</span>
-          <button onClick={load} className="underline hover:text-white">Retry</button>
+        <div className="px-3 py-2 rounded text-[10px] bg-rose-950/80 border border-rose-800 text-rose-200 flex items-center justify-between">
+          <span>ERROR: {error}</span>
+          <button onClick={load} className="underline hover:text-white">[RETRY]</button>
         </div>
       )}
 
       {loading && tests.length === 0 ? (
-        <div className="rounded-xl border p-12 text-center" style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}>
-          <div className="inline-block w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-xs font-mono text-slate-500">Retrieving test runs from database...</p>
+        <div className="rounded border border-[#1c1e28] bg-[#101117] p-8 text-center text-zinc-500 text-[10px]">
+          RETRIEVING_SESSIONS_FROM_DATABASE...
         </div>
       ) : filtered.length === 0 ? (
-        <div
-          className="rounded-xl border px-6 py-16 text-center"
-          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-        >
-          <div className="text-2xl mb-2">🔍</div>
-          <p className="text-sm font-mono text-slate-400">
-            {tests.length === 0 ? 'No test runs found in database.' : 'No tests match the current filter.'}
+        <div className="rounded border border-[#1c1e28] bg-[#101117] px-4 py-8 text-center space-y-2">
+          <p className="text-zinc-400 font-bold text-[11px]">
+            {tests.length === 0 ? 'NO_SESSIONS_RECORDED' : 'NO_SESSIONS_MATCHING_FILTER'}
           </p>
-          <p className="text-xs font-mono text-slate-600 mt-1">
-            {tests.length === 0
-              ? 'Launch an autonomous exploration to record telemetry and findings.'
-              : 'Try clearing your search or status filter.'}
-          </p>
-          {tests.length === 0 ? (
+          {tests.length === 0 && (
             <Link
               to="/"
-              className="inline-block text-xs font-mono text-white px-4 py-2 rounded-lg mt-4 font-semibold"
-              style={{ background: '#6366f1' }}
+              className="inline-block text-[10px] text-white px-3 py-1 rounded bg-indigo-600 font-bold mt-2"
             >
-              Start First Test →
+              START_FIRST_SESSION →
             </Link>
-          ) : (
-            <button
-              onClick={() => { setSearch(''); setStatusFilter('all') }}
-              className="text-xs font-mono text-indigo-400 underline mt-3 inline-block cursor-pointer"
-            >
-              Reset filters
-            </button>
           )}
         </div>
       ) : (
-        <div
-          className="rounded-xl border overflow-hidden shadow-xl"
-          style={{ borderColor: '#1e1e2e', background: '#0e0e17' }}
-        >
+        <div className="rounded border border-[#1c1e28] bg-[#101117] overflow-hidden">
           {/* Table Header */}
-          <div
-            className="grid grid-cols-[1fr_160px_100px_90px_90px_100px_120px] gap-3 px-4 py-3 border-b text-xs font-mono font-semibold text-slate-500 uppercase tracking-wider items-center"
-            style={{ background: '#090910', borderColor: '#1e1e2e' }}
-          >
-            <span>Target URL</span>
-            <span>Date</span>
-            <span>Duration</span>
-            <span className="text-center">Actions</span>
-            <span className="text-center">States</span>
-            <span className="text-center">Findings</span>
-            <span className="text-right">Status</span>
+          <div className="grid grid-cols-[1fr_140px_90px_70px_70px_80px_100px] gap-2 px-3 py-2 border-b border-[#1c1e28] text-[9.5px] font-bold text-zinc-500 uppercase tracking-wider items-center bg-[#0d0e14]">
+            <span>TARGET_URL</span>
+            <span>DATE</span>
+            <span>DURATION</span>
+            <span className="text-center">ACTIONS</span>
+            <span className="text-center">STATES</span>
+            <span className="text-center">FINDINGS</span>
+            <span className="text-right">STATUS</span>
           </div>
 
           {/* Rows */}
-          <div className="divide-y" style={{ borderColor: '#161622' }}>
+          <div className="divide-y divide-[#181a24]">
             {filtered.map((t) => {
               const findingsCount = t.findings_count ?? (t.findings?.length || 0)
               const actionsCount = t.actions_count ?? (t.actions?.length || 0)
@@ -248,41 +206,38 @@ export function History() {
                 <div
                   key={t.id}
                   onClick={() => navigate(`/test/${t.id}`)}
-                  className="grid grid-cols-[1fr_160px_100px_90px_90px_100px_120px] gap-3 px-4 py-3.5
-                             hover:bg-indigo-950/15 transition-colors items-center cursor-pointer group"
+                  className="grid grid-cols-[1fr_140px_90px_70px_70px_80px_100px] gap-2 px-3 py-2 hover:bg-[#141622] transition-colors items-center cursor-pointer group"
                 >
                   {/* Target URL */}
                   <div className="min-w-0 pr-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-medium text-slate-200 group-hover:text-indigo-300 transition-colors truncate">
-                        {t.url}
-                      </span>
+                    <div className="text-[10.5px] font-bold text-zinc-200 group-hover:text-indigo-300 transition-colors truncate">
+                      {t.url}
                     </div>
-                    <div className="text-[10px] font-mono text-slate-600 truncate mt-0.5">
-                      ID: {t.id} · Platform: {t.platform}
+                    <div className="text-[8.5px] text-zinc-500 truncate mt-0.5">
+                      ID: {t.id} · {t.platform}
                     </div>
                   </div>
 
                   {/* Date */}
-                  <div className="text-xs font-mono text-slate-400 whitespace-nowrap">
+                  <div className="text-[9.5px] text-zinc-400 whitespace-nowrap">
                     {formatDate(t.created_at)}
                   </div>
 
                   {/* Duration */}
-                  <div className="text-xs font-mono text-slate-300 whitespace-nowrap">
+                  <div className="text-[9.5px] text-zinc-300 whitespace-nowrap">
                     {formatDuration(t.duration_ms, t.started_at, t.completed_at)}
                   </div>
 
                   {/* Actions */}
                   <div className="text-center">
-                    <span className="inline-block px-2 py-0.5 rounded text-xs font-mono bg-slate-900 text-slate-300 border border-slate-800">
+                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-[#0b0c10] text-zinc-300 border border-[#1c1e28]">
                       {actionsCount}
                     </span>
                   </div>
 
                   {/* States */}
                   <div className="text-center">
-                    <span className="inline-block px-2 py-0.5 rounded text-xs font-mono bg-slate-900 text-slate-300 border border-slate-800">
+                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-[#0b0c10] text-zinc-300 border border-[#1c1e28]">
                       {statesCount}
                     </span>
                   </div>
@@ -290,14 +245,13 @@ export function History() {
                   {/* Findings */}
                   <div className="text-center">
                     <span
-                      className="inline-block px-2 py-0.5 rounded text-xs font-mono font-semibold"
-                      style={{
-                        background: findingsCount > 0 ? '#ef444420' : '#22c55e15',
-                        color: findingsCount > 0 ? '#f87171' : '#4ade80',
-                        border: `1px solid ${findingsCount > 0 ? '#ef444440' : '#22c55e30'}`,
-                      }}
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                        findingsCount > 0
+                          ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                          : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                      }`}
                     >
-                      {findingsCount} {findingsCount === 1 ? 'issue' : 'issues'}
+                      {findingsCount}
                     </span>
                   </div>
 

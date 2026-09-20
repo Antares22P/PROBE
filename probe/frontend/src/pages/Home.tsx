@@ -47,46 +47,37 @@ export function Home() {
       await api.startTest(test.id)
       navigate(`/test/${test.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start test')
+      setError(err instanceof Error ? err.message : 'Failed to start test session')
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-52px)] px-4 py-8">
+    <div className="flex flex-col items-center justify-center flex-1 px-4 py-12">
       <div className="w-full max-w-xl">
         {/* Header */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 mb-3">
-            <span
-              className="font-mono text-2xl font-bold px-3 py-1 rounded tracking-wider shadow-lg"
-              style={{ background: '#6366f1', color: '#fff' }}
-            >
-              PROBE
-            </span>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 uppercase">
-              V1 Autonomous
+            <span className="font-mono text-xs font-semibold px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/80">
+              PROBE Autonomous Engine
             </span>
           </div>
-          <h1 className="text-xl font-mono font-semibold text-slate-100 tracking-tight">
-            Autonomous Web Reliability & Issue Discovery
+          <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">
+            Web Reliability & Issue Discovery
           </h1>
-          <p className="text-slate-400 text-xs font-mono mt-1.5">
-            Real Playwright browser automation · Deterministic issue detection · Gemini AI root cause reasoning
+          <p className="text-zinc-400 text-xs font-mono mt-2 max-w-md mx-auto leading-relaxed">
+            Real Playwright Chromium automation · Multi-agent state exploration · Deterministic telemetry capture
           </p>
         </div>
 
-        {/* Card */}
-        <div
-          className="rounded-xl border p-6 shadow-2xl backdrop-blur-sm"
-          style={{ background: '#0e0e17', borderColor: '#1e1e2e' }}
-        >
-          <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Form Card */}
+        <div className="bg-[#121216] border border-zinc-800 rounded-xl p-6 shadow-sm">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Target URL */}
             <div>
               <label
                 htmlFor="target-url"
-                className="block text-xs font-mono font-semibold text-slate-300 mb-1.5 uppercase tracking-wider"
+                className="block text-xs font-mono font-medium text-zinc-300 mb-1.5 uppercase tracking-wider"
               >
                 Target URL
               </label>
@@ -99,229 +90,185 @@ export function Home() {
                   placeholder="https://example.com"
                   required
                   disabled={loading}
-                  className="w-full px-4 py-3 rounded-lg text-sm font-mono text-slate-100 placeholder-slate-600
-                             border outline-none transition-all
-                             disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    background: '#07070d',
-                    borderColor: '#1e1e2e',
-                  }}
-                  onFocus={(e) => { e.target.style.borderColor = '#6366f1' }}
-                  onBlur={(e) => { e.target.style.borderColor = '#1e1e2e' }}
+                  className="w-full px-3.5 py-2.5 rounded-lg text-sm font-mono text-zinc-100 placeholder-zinc-500 bg-zinc-900 border border-zinc-700/80 focus:border-indigo-500 focus:outline-none transition-colors disabled:opacity-50"
                 />
               </div>
             </div>
 
-            {/* Quick Presets */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => applyPreset(30, 15, 10, 3)}
-                className="text-[11px] font-mono px-2.5 py-1 rounded border transition-colors hover:border-indigo-500 hover:text-indigo-300"
-                style={{
-                  background: durationSeconds === 30 && maxActions === 15 ? '#6366f120' : '#141420',
-                  borderColor: durationSeconds === 30 && maxActions === 15 ? '#6366f1' : '#232336',
-                  color: durationSeconds === 30 && maxActions === 15 ? '#818cf8' : '#94a3b8',
-                }}
-              >
-                ⚡ Quick Scan (30s · 15 acts)
-              </button>
-              <button
-                type="button"
-                onClick={() => applyPreset(180, 50, 25, 5)}
-                className="text-[11px] font-mono px-2.5 py-1 rounded border transition-colors hover:border-indigo-500 hover:text-indigo-300"
-                style={{
-                  background: durationSeconds === 180 && maxActions === 50 ? '#6366f120' : '#141420',
-                  borderColor: durationSeconds === 180 && maxActions === 50 ? '#6366f1' : '#232336',
-                  color: durationSeconds === 180 && maxActions === 50 ? '#818cf8' : '#94a3b8',
-                }}
-              >
-                🔍 Standard (180s · 50 acts)
-              </button>
-              <button
-                type="button"
-                onClick={() => applyPreset(300, 100, 40, 8)}
-                className="text-[11px] font-mono px-2.5 py-1 rounded border transition-colors hover:border-indigo-500 hover:text-indigo-300"
-                style={{
-                  background: durationSeconds === 300 && maxActions === 100 ? '#6366f120' : '#141420',
-                  borderColor: durationSeconds === 300 && maxActions === 100 ? '#6366f1' : '#232336',
-                  color: durationSeconds === 300 && maxActions === 100 ? '#818cf8' : '#94a3b8',
-                }}
-              >
-                🛡️ Deep Audit (300s · 100 acts)
-              </button>
+            {/* Scan Presets */}
+            <div>
+              <div className="text-[11px] font-mono text-zinc-400 mb-2 uppercase tracking-wide">
+                Inspection Preset
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyPreset(30, 15, 10, 3)}
+                  className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
+                    durationSeconds === 30 && maxActions === 15
+                      ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                      : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                  }`}
+                >
+                  <div className="text-xs font-semibold font-mono">Quick Scan</div>
+                  <div className="text-[10px] text-zinc-500 font-mono mt-0.5">30s · 15 actions</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => applyPreset(180, 50, 25, 5)}
+                  className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
+                    durationSeconds === 180 && maxActions === 50
+                      ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                      : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                  }`}
+                >
+                  <div className="text-xs font-semibold font-mono">Standard</div>
+                  <div className="text-[10px] text-zinc-500 font-mono mt-0.5">180s · 50 actions</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => applyPreset(300, 100, 40, 8)}
+                  className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
+                    durationSeconds === 300 && maxActions === 100
+                      ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                      : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                  }`}
+                >
+                  <div className="text-xs font-semibold font-mono">Deep Audit</div>
+                  <div className="text-[10px] text-zinc-500 font-mono mt-0.5">300s · 100 actions</div>
+                </button>
+              </div>
             </div>
 
-            {/* Collapsible Advanced Settings */}
-            <div className="pt-2">
+            {/* Advanced Exploration Config */}
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors py-1 cursor-pointer"
+                className="flex items-center gap-2 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors py-1 cursor-pointer"
               >
-                <span className="text-[10px] text-indigo-400 font-bold">
+                <span className="text-[10px] text-zinc-500 font-bold">
                   {showAdvanced ? '▼' : '▶'}
                 </span>
-                <span>Advanced Exploration Settings</span>
-                <span className="text-[10px] text-slate-600">
-                  ({durationSeconds}s, {maxActions} max actions)
-                </span>
+                <span>Advanced Exploration Configuration</span>
               </button>
 
               {showAdvanced && (
-                <div
-                  className="mt-3 p-4 rounded-lg border space-y-3.5"
-                  style={{ background: '#080811', borderColor: '#1c1c2b' }}
-                >
+                <div className="mt-3 p-4 rounded-lg bg-zinc-900 border border-zinc-800 space-y-3.5">
                   <div className="grid grid-cols-2 gap-3">
-                    {/* Test Duration */}
                     <div>
                       <label
                         htmlFor="test-duration"
-                        className="block text-[11px] font-mono text-slate-400 mb-1 uppercase"
+                        className="block text-[11px] font-mono text-zinc-400 mb-1"
                       >
-                        Test Duration (seconds)
+                        Duration Timeout (sec)
                       </label>
                       <input
                         id="test-duration"
                         type="number"
                         min={10}
                         max={600}
-                        step={10}
                         value={durationSeconds}
-                        onChange={(e) => setDurationSeconds(Number(e.target.value))}
-                        disabled={loading}
-                        className="w-full px-3 py-1.5 rounded text-xs font-mono text-slate-200 border outline-none"
-                        style={{ background: '#11111d', borderColor: '#26263b' }}
+                        onChange={(e) => setDurationSeconds(Math.max(10, Number(e.target.value)))}
+                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-zinc-100 bg-zinc-950 border border-zinc-700/80 focus:border-indigo-500 focus:outline-none"
                       />
                     </div>
 
-                    {/* Maximum Actions */}
                     <div>
                       <label
                         htmlFor="max-actions"
-                        className="block text-[11px] font-mono text-slate-400 mb-1 uppercase"
+                        className="block text-[11px] font-mono text-zinc-400 mb-1"
                       >
-                        Maximum Actions
+                        Max Actions
                       </label>
                       <input
                         id="max-actions"
                         type="number"
-                        min={5}
-                        max={200}
-                        step={5}
+                        min={1}
+                        max={300}
                         value={maxActions}
-                        onChange={(e) => setMaxActions(Number(e.target.value))}
-                        disabled={loading}
-                        className="w-full px-3 py-1.5 rounded text-xs font-mono text-slate-200 border outline-none"
-                        style={{ background: '#11111d', borderColor: '#26263b' }}
+                        onChange={(e) => setMaxActions(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-zinc-100 bg-zinc-950 border border-zinc-700/80 focus:border-indigo-500 focus:outline-none"
                       />
                     </div>
+                  </div>
 
-                    {/* Max States */}
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label
                         htmlFor="max-states"
-                        className="block text-[11px] font-mono text-slate-400 mb-1 uppercase"
+                        className="block text-[11px] font-mono text-zinc-400 mb-1"
                       >
-                        Max Distinct States
+                        Max States
                       </label>
                       <input
                         id="max-states"
                         type="number"
-                        min={5}
-                        max={100}
-                        step={5}
+                        min={1}
+                        max={150}
                         value={maxStates}
-                        onChange={(e) => setMaxStates(Number(e.target.value))}
-                        disabled={loading}
-                        className="w-full px-3 py-1.5 rounded text-xs font-mono text-slate-200 border outline-none"
-                        style={{ background: '#11111d', borderColor: '#26263b' }}
+                        onChange={(e) => setMaxStates(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-zinc-100 bg-zinc-950 border border-zinc-700/80 focus:border-indigo-500 focus:outline-none"
                       />
                     </div>
 
-                    {/* Max Depth */}
                     <div>
                       <label
                         htmlFor="max-depth"
-                        className="block text-[11px] font-mono text-slate-400 mb-1 uppercase"
+                        className="block text-[11px] font-mono text-zinc-400 mb-1"
                       >
-                        Max Exploration Depth
+                        Max DOM Depth
                       </label>
                       <input
                         id="max-depth"
                         type="number"
                         min={1}
                         max={20}
-                        step={1}
                         value={maxDepth}
-                        onChange={(e) => setMaxDepth(Number(e.target.value))}
-                        disabled={loading}
-                        className="w-full px-3 py-1.5 rounded text-xs font-mono text-slate-200 border outline-none"
-                        style={{ background: '#11111d', borderColor: '#26263b' }}
+                        onChange={(e) => setMaxDepth(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-zinc-100 bg-zinc-950 border border-zinc-700/80 focus:border-indigo-500 focus:outline-none"
                       />
                     </div>
                   </div>
 
-                  {/* Headless Toggle */}
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-800/60">
-                    <div>
-                      <span className="text-xs font-mono text-slate-300 block">Headless Browser</span>
-                      <span className="text-[10px] font-mono text-slate-500">Run browser in background for speed</span>
-                    </div>
+                  <label className="flex items-center gap-2 text-xs font-mono text-zinc-300 pt-1 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={headless}
                       onChange={(e) => setHeadless(e.target.checked)}
-                      disabled={loading}
-                      className="rounded accent-indigo-500 w-4 h-4 cursor-pointer"
+                      className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
                     />
-                  </div>
+                    <span>Run Headless Chromium (Recommended for background execution)</span>
+                  </label>
                 </div>
               )}
             </div>
 
+            {/* Error Display */}
             {error && (
-              <div
-                className="px-3.5 py-2.5 rounded-lg text-xs font-mono border flex items-start gap-2"
-                style={{ background: '#1a0a0a', borderColor: '#7f1d1d', color: '#fca5a5' }}
-              >
-                <span className="text-red-400 font-bold">⚠</span>
-                <span>{error}</span>
+              <div className="p-3 rounded-lg bg-rose-950/80 border border-rose-800 text-xs font-mono text-rose-200">
+                {error}
               </div>
             )}
 
-            {/* Start Button */}
+            {/* Launch Button */}
             <button
               type="submit"
               disabled={loading || !url.trim()}
-              className="w-full py-3.5 rounded-lg text-sm font-mono font-bold cursor-pointer
-                         transition-all shadow-lg hover:shadow-indigo-500/25
-                         disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              style={{
-                background: loading ? '#4f52c4' : '#6366f1',
-                color: '#fff',
-              }}
+              className="w-full py-2.5 rounded-lg text-xs font-mono font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
-                  <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Initializing Test Engine...</span>
                 </>
               ) : (
-                <>
-                  <span>▶ Start Autonomous Test</span>
-                </>
+                <span>Launch Inspection Session →</span>
               )}
             </button>
           </form>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between text-xs font-mono text-slate-600 mt-6 px-2">
-          <span>Real Browser Automation</span>
-          <span>Zero Fake Data</span>
-          <span>100% Deterministic Baseline</span>
         </div>
       </div>
     </div>

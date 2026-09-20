@@ -22,6 +22,7 @@ export interface InteractiveElement {
   visible: boolean
   enabled: boolean
   bounding_box?: BoundingBox | null
+  bounds?: BoundingBox | null
 }
 
 export interface ConsoleMessage {
@@ -201,6 +202,36 @@ export interface Test {
   findings?: Finding[]
 }
 
+export type AgentType = 'technical' | 'ux_ui' | 'chaos' | 'user_behavior'
+
+export type AgentState = 'exploring' | 'reviewing' | 'waiting' | 'finished'
+
+export interface BrowserActionEvent {
+  type: 'browser_action'
+  inspection_id?: string
+  agent: AgentType
+  action: 'click' | 'type' | 'scroll' | 'navigate' | 'back' | 'wait' | 'screenshot' | string
+  phase?: 'scanning' | 'deciding' | 'targeting' | 'interacting' | 'observing' | string
+  target?: string | null
+  selector?: string | null
+  x?: number | null
+  y?: number | null
+  target_bounds?: { x: number; y: number; width: number; height: number } | null
+  value?: string | null
+  direction?: 'up' | 'down' | string | null
+  amount?: number | null
+  reason?: string | null
+  timestamp: string
+}
+
+export interface AgentStatusEvent {
+  type: 'agent_status'
+  active_agent: AgentType
+  agents: Record<AgentType, AgentState>
+  message: string
+  timestamp: string
+}
+
 export interface SSEEvent {
   type:
     | 'connected'
@@ -211,6 +242,9 @@ export interface SSEEvent {
     | 'finding_analyzed'
     | 'test_analyzed'
     | 'screenshot'
+    | 'browser_frame'
+    | 'browser_action'
+    | 'agent_status'
     | 'action_start'
     | 'action_completed'
     | 'action_failed'
@@ -240,8 +274,22 @@ export interface SSEEvent {
   fingerprint?: string | null
   action_type?: string
   target?: string | null
+  selector?: string | null
   value?: string | null
   description?: string | null
+  agent?: AgentType | string
+  active_agent?: AgentType
+  agents?: Record<AgentType, AgentState>
+  state?: AgentState | string
+  inspection_id?: string
+  action?: string
+  phase?: string
+  x?: number | null
+  y?: number | null
+  target_bounds?: { x: number; y: number; width: number; height: number } | null
+  direction?: string | null
+  amount?: number | null
+  reason?: string | null
   severity?: string
   category?: string
   confidence?: number
@@ -256,4 +304,5 @@ export interface SSEEvent {
   states_count?: number
   findings_count?: number
   ai_summary?: string
+  timestamp?: string
 }

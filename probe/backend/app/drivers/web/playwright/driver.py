@@ -83,6 +83,7 @@ class WebTestDriver(TestDriver):
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=self._config.headless,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
             )
             # Create isolated context for this test session
             self._context = await self._browser.new_context(
@@ -107,7 +108,8 @@ class WebTestDriver(TestDriver):
                 test_id=self._session.id,
             )
         except Exception as exc:
-            raise DriverError(f"Failed to initialize WebTestDriver: {exc}") from exc
+            err_detail = f"{type(exc).__name__}: {exc}" if str(exc).strip() else repr(exc)
+            raise DriverError(f"Failed to initialize WebTestDriver ({err_detail})") from exc
 
     async def close(self) -> None:
         """Tear down Playwright resources."""
@@ -550,6 +552,28 @@ class WebTestDriver(TestDriver):
     async def get_interactive_elements(self) -> list[Element]:
         state = await self.get_current_state()
         return state.elements
+
+    async def get_element_coordinates(self, selector_or_ref: str) -> Optional[dict[str, float]]:
+        """
+        Extract the live screen coordinates and center point of an element by selector.
+        Returns: {'x': center_x, 'y': center_y, 'left': x, 'top': y, 'width': w, 'height': h}
+        """
+        page = self._require_page()
+        try:
+            loc = page.locator(selector_or_ref).first
+            box = await loc.bounding_box()
+            if box:
+                return {
+                    "x": round(box["x"] + box["width"] / 2.0, 1),
+                    "y": round(box["y"] + box["height"] / 2.0, 1),
+                    "left": round(box["x"], 1),
+                    "top": round(box["y"], 1),
+                    "width": round(box["width"], 1),
+                    "height": round(box["height"], 1),
+                }
+        except Exception:
+            pass
+        return None
 
     # ------------------------------------------------------------------
     # Actions
